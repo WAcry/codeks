@@ -1,0 +1,452 @@
+name: codeks-npm
+
+# Native Linux/macOS/Windows CLI and voice builds. See fork/patches/0004-codeks-npm.md.
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish npm packages and release archives (codeks/* tags only)
+        type: boolean
+        default: false
+
+concurrency:
+  group: codeks-npm-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUTF8: "1"
+  CODEX_REPO_ROOT: ${{ github.workspace }}
+  CARGO_INCREMENTAL: "0"
+  CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      matrix: ${{ steps.platforms.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 100
+          persist-credentials: false
+      - name: Check patch stack and resolve version
+        id: version
+        env:
+          PUBLISH: ${{ inputs.publish }}
+        run: |
+          set -euo pipefail
+          python3 fork/tools/codeks.py check
+          args=()
+          if [[ "$PUBLISH" == "true" ]]; then args+=(--require-tag); fi
+          python3 fork/tools/npm_package.py version "${args[@]}" >> "$GITHUB_OUTPUT"
+      - name: Select native platforms
+        id: platforms
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          platforms = [
+              {"target": "x86_64-unknown-linux-musl", "runner": "ubuntu-24.04", "arch": "x64", "voice": "linux_x86_64"},
+              {"target": "aarch64-unknown-linux-musl", "runner": "ubuntu-24.04-arm", "arch": "arm64", "voice": "linux_aarch64"},
+              {"target": "x86_64-apple-darwin", "runner": "macos-15-intel", "arch": "x64", "voice": "macos_x86_64"},
+              {"target": "aarch64-apple-darwin", "runner": "macos-15", "arch": "arm64", "voice": "macos_aarch64"},
+              {"target": "x86_64-pc-windows-msvc", "runner": "windows-2025", "arch": "x64"},
+              {"target": "aarch64-pc-windows-msvc", "runner": "windows-11-arm", "arch": "arm64"},
+          ]
+          print("matrix=" + json.dumps({"include": platforms}))
+          PY
+
+  binaries:
+    name: CLI ${{ matrix.target }}
+    needs: prepare
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      TARGET: ${{ matrix.target }}
+      CARGO_HOME: ${{ github.workspace }}/.cargo-home
+      # Keep release linking affordable on standard runners; symbols are not shipped.
+      CARGO_PROFILE_RELEASE_DEBUG: "0"
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+          architecture: ${{ matrix.arch }}
+      - name: Set Cargo build directory
+        run: echo "CARGO_TARGET_DIR=$RUNNER_TEMP/cargo-target" >> "$GITHUB_ENV"
+      - name: Enable Windows long paths
+        if: runner.os == 'Windows'
+        run: git config --global core.longpaths true
+      - name: Limit macOS compiler concurrency
+        if: runner.os == 'macOS'
+        run: echo "CARGO_BUILD_JOBS=2" >> "$GITHUB_ENV"
+      - name: Prepare Linux build space and swap
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          if [ -d /usr/share/dotnet ]; then sudo rm -r /usr/share/dotnet; fi
+          if [ -d /usr/local/lib/android ]; then sudo rm -r /usr/local/lib/android; fi
+          if [ -d /opt/ghc ]; then sudo rm -r /opt/ghc; fi
+          if [ -d /opt/hostedtoolcache/CodeQL ]; then sudo rm -r /opt/hostedtoolcache/CodeQL; fi
+          sudo fallocate -l 12G "$RUNNER_TEMP/codeks-swapfile"
+          sudo chmod 600 "$RUNNER_TEMP/codeks-swapfile"
+          sudo mkswap "$RUNNER_TEMP/codeks-swapfile" > /dev/null
+          sudo swapon "$RUNNER_TEMP/codeks-swapfile"
+          free -h
+          df -h /
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          targets: ${{ matrix.target }}
+      - name: Cache Cargo downloads
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: |
+            .cargo-home/registry/index
+            .cargo-home/registry/cache
+            .cargo-home/git/db
+          key: codeks-cargo-${{ matrix.target }}-${{ hashFiles('codex-rs/Cargo.lock') }}
+          restore-keys: codeks-cargo-${{ matrix.target }}-
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        if: runner.os == 'Linux'
+        with:
+          version: 0.14.0
+          use-cache: false
+      - name: Install musl build tools
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          mkdir -p "$CARGO_HOME"
+          : > "$CARGO_HOME/config.toml"
+          bash .github/scripts/install-musl-build-tools.sh
+          echo "AWS_LC_SYS_NO_JITTER_ENTROPY=1" >> "$GITHUB_ENV"
+      - uses: ./.github/actions/setup-msvc-env
+        if: runner.os == 'Windows'
+        with:
+          target: ${{ matrix.target }}
+      - uses: ./.github/actions/setup-rusty-v8
+        with:
+          target: ${{ matrix.target }}
+      - name: Build Linux sandbox and embed digest
+        if: runner.os == 'Linux'
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo build --target "$TARGET" --release --bin bwrap
+          binary="$CARGO_TARGET_DIR/$TARGET/release/bwrap"
+          strip --strip-debug --strip-unneeded "$binary"
+          echo "CODEX_BWRAP_SHA256=$(sha256sum "$binary" | cut -d ' ' -f 1)" >> "$GITHUB_ENV"
+      - name: Build CLI and helpers
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          STABLE_GIT_COMMIT="$(git rev-parse HEAD)"
+          export STABLE_GIT_COMMIT
+          args=(--bin codex --bin codex-code-mode-host --bin codex-exec-server)
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            args+=(--bin codex-command-runner --bin codex-windows-sandbox-setup)
+            if [[ "$TARGET" == "x86_64-pc-windows-msvc" ]]; then
+              export LIBSQLITE3_FLAGS=SQLITE_DISABLE_INTRINSIC
+            fi
+          fi
+          cargo build --target "$TARGET" --release "${args[@]}"
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            strip --strip-debug --strip-unneeded "$CARGO_TARGET_DIR/$TARGET/release/codex" "$CARGO_TARGET_DIR/$TARGET/release/codex-code-mode-host" "$CARGO_TARGET_DIR/$TARGET/release/codex-exec-server"
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            strip -x "$CARGO_TARGET_DIR/$TARGET/release/codex" "$CARGO_TARGET_DIR/$TARGET/release/codex-code-mode-host" "$CARGO_TARGET_DIR/$TARGET/release/codex-exec-server"
+          fi
+      - name: Assemble base package
+        run: |
+          set -euo pipefail
+          release_dir="$CARGO_TARGET_DIR/$TARGET/release"
+          suffix=""
+          resources=(--package-dir "$RUNNER_TEMP/base-package")
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            suffix=".exe"
+            resources+=(--codex-command-runner-bin "$release_dir/codex-command-runner.exe")
+            resources+=(--codex-windows-sandbox-setup-bin "$release_dir/codex-windows-sandbox-setup.exe")
+          elif [[ "$RUNNER_OS" == "Linux" ]]; then
+            resources+=(--bwrap-bin "$release_dir/bwrap")
+          fi
+          python scripts/build_codex_package.py --target "$TARGET" --variant codex --cargo-profile release \
+            --entrypoint-bin "$release_dir/codex$suffix" --code-mode-host-bin "$release_dir/codex-code-mode-host$suffix" \
+            --exec-server-bin "$release_dir/codex-exec-server$suffix" \
+            "${resources[@]}"
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            for binary in bin/codex bin/codex-code-mode-host bin/codex-exec-server codex-path/rg; do
+              codesign --force --sign - --timestamp=none "$RUNNER_TEMP/base-package/$binary"
+              codesign --verify --strict "$RUNNER_TEMP/base-package/$binary"
+            done
+          fi
+          PYTHONPATH=scripts python3 - "$RUNNER_TEMP/base-package" "$RUNNER_TEMP/base-$TARGET.tar.gz" <<'PY'
+          from pathlib import Path
+          import sys
+          from codex_package.archive import write_archive
+          write_archive(Path(sys.argv[1]), Path(sys.argv[2]), force=False)
+          PY
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: codeks-base-${{ matrix.target }}
+          path: ${{ runner.temp }}/base-${{ matrix.target }}.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  voice:
+    name: Voice ${{ matrix.target }}
+    needs: prepare
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      TARGET: ${{ matrix.target }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+          architecture: ${{ matrix.arch }}
+      - name: Prepare voice build paths
+        run: |
+          set -euo pipefail
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            root=C:/b
+            git config --global core.longpaths true
+          else
+            root="$RUNNER_TEMP/voice-build"
+          fi
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            if [ -d /usr/share/dotnet ]; then sudo rm -r /usr/share/dotnet; fi
+            if [ -d /usr/local/lib/android ]; then sudo rm -r /usr/local/lib/android; fi
+            if [ -d /opt/ghc ]; then sudo rm -r /opt/ghc; fi
+            if [ -d /opt/hostedtoolcache/CodeQL ]; then sudo rm -r /opt/hostedtoolcache/CodeQL; fi
+            sudo fallocate -l 4G "$RUNNER_TEMP/codeks-voice-swapfile"
+            sudo chmod 600 "$RUNNER_TEMP/codeks-voice-swapfile"
+            sudo mkswap "$RUNNER_TEMP/codeks-voice-swapfile" > /dev/null
+            sudo swapon "$RUNNER_TEMP/codeks-voice-swapfile"
+          fi
+          mkdir -p "$root/o" "$root/u" "$root/r" "$root/c" "$root/d"
+          {
+            echo "BAZEL_OUTPUT_BASE=$root/o"
+            echo "BAZEL_OUTPUT_USER_ROOT=$root/u"
+            echo "BAZEL_REPOSITORY_CACHE=$root/r"
+            echo "BAZEL_REPO_CONTENTS_CACHE=$root/c"
+            echo "CODEKS_BAZEL_DISK_CACHE=$root/d"
+          } >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+      - uses: facebook/install-dotslash@1e4e7b3e07eaca387acb98f1d4720e0bee8dbb6a # v2
+      - uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+        with:
+          bazelisk-version: 1.28.1
+          output-base: ${{ env.BAZEL_OUTPUT_BASE }}
+      - name: Restore voice build cache
+        uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: |
+            ${{ env.BAZEL_REPOSITORY_CACHE }}
+            ${{ env.CODEKS_BAZEL_DISK_CACHE }}
+          key: codeks-voice-${{ matrix.target }}-${{ hashFiles('MODULE.bazel*', 'third_party/voice/**', '.bazelversion') }}-${{ github.run_id }}
+          restore-keys: codeks-voice-${{ matrix.target }}-
+      - uses: ./.github/actions/setup-msvc-env
+        if: runner.os == 'Windows'
+        with:
+          target: ${{ matrix.target }}
+      - name: Build and stage Unix voice
+        if: runner.os != 'Windows'
+        env:
+          VOICE_PREFIX: ${{ matrix.voice }}
+        run: |
+          set -euo pipefail
+          (cd codex-rs && cargo update --workspace)
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            platform_args=(--jobs=2 --macos_minimum_os=14.0)
+          else
+            platform_args=(--jobs="$(nproc)")
+          fi
+          bazel --noexperimental_remote_repo_contents_cache build --config=release "${platform_args[@]}" \
+            --repository_cache="$BAZEL_REPOSITORY_CACHE" --repo_contents_cache="$BAZEL_REPO_CONTENTS_CACHE" \
+            --disk_cache="$CODEKS_BAZEL_DISK_CACHE" --experimental_disk_cache_gc_max_size=2G \
+            //codex-rs/voice-host:codex-voice-host //third_party/voice:native_runtime
+          python fork/tools/voice_package.py stage --target "$TARGET" \
+            --source "bazel-bin/third_party/voice/native_runtime_$VOICE_PREFIX" \
+            --helper bazel-bin/codex-rs/voice-host/codex-voice-host --output "$RUNNER_TEMP/voice-package"
+      - name: Build and stage Windows voice
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./fork/tools/build_voice_windows.ps1 -Target $env:TARGET -OutputDir "$env:RUNNER_TEMP/voice-package"
+      - name: Archive voice build
+        run: |
+          python - "$RUNNER_TEMP/voice-package" "$RUNNER_TEMP/voice-$TARGET.tar.gz" <<'PY'
+          from pathlib import Path
+          import sys, tarfile
+          source = Path(sys.argv[1])
+          with tarfile.open(sys.argv[2], "w:gz") as archive:
+              for entry in source.iterdir():
+                  archive.add(entry, arcname=entry.name)
+          PY
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: codeks-voice-${{ matrix.target }}
+          path: ${{ runner.temp }}/voice-${{ matrix.target }}.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+      - name: Save voice build cache
+        if: always() && !cancelled()
+        uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: |
+            ${{ env.BAZEL_REPOSITORY_CACHE }}
+            ${{ env.CODEKS_BAZEL_DISK_CACHE }}
+          key: codeks-voice-${{ matrix.target }}-${{ hashFiles('MODULE.bazel*', 'third_party/voice/**', '.bazelversion') }}-${{ github.run_id }}
+
+  pack:
+    name: Assemble release packages
+    needs: [prepare, binaries, voice]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 100
+          persist-credentials: false
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: codeks-base-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/inputs
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: codeks-voice-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/inputs
+      - name: Assemble voice and archive complete packages
+        env:
+          PLATFORM_MATRIX: ${{ needs.prepare.outputs.matrix }}
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess, sys, tarfile
+          from pathlib import Path
+          root = Path(os.environ["RUNNER_TEMP"])
+          for platform in json.loads(os.environ["PLATFORM_MATRIX"])["include"]:
+              target = platform["target"]
+              for kind in ("base", "voice"):
+                  with tarfile.open(root / "inputs" / f"{kind}-{target}.tar.gz") as archive:
+                      archive.extractall(root / kind / target, filter="data")
+              package = root / "assembled" / target
+              subprocess.run([sys.executable, "fork/tools/voice_package.py", "assemble", "--target", target,
+                              "--package-dir", str(root / "base" / target), "--voice-dir", str(root / "voice" / target),
+                              "--output-dir", str(package)], check=True)
+              subprocess.run([sys.executable, "fork/tools/npm_package.py", "archive", "--target", target,
+                              "--package-dir", str(package), "--output-dir", str(root / "archives")], check=True)
+          PY
+      - name: Pack all npm platforms and launcher together
+        run: |
+          set -euo pipefail
+          python3 fork/tools/npm_package.py collect --archives-dir "$RUNNER_TEMP/archives" --vendor-dir "$RUNNER_TEMP/vendor"
+          python3 fork/tools/npm_package.py pack --vendor-src "$RUNNER_TEMP/vendor" --output-dir "$RUNNER_TEMP/npm"
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: codeks-npm-${{ needs.prepare.outputs.version }}
+          path: ${{ runner.temp }}/npm/
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: codeks-archives-${{ needs.prepare.outputs.version }}
+          path: ${{ runner.temp }}/archives/
+          if-no-files-found: error
+          retention-days: 7
+
+  smoke:
+    name: Verify ${{ matrix.target }}
+    needs: [prepare, pack]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+          architecture: ${{ matrix.arch }}
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 24
+          architecture: ${{ matrix.arch }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: codeks-npm-${{ needs.prepare.outputs.version }}
+          path: ${{ runner.temp }}/npm
+      - name: Verify installed package and initialize voice runtime
+        shell: bash
+        run: python fork/tools/npm_package.py smoke --dir "$RUNNER_TEMP/npm"
+
+  publish:
+    name: Publish npm and release downloads
+    needs: [prepare, smoke]
+    if: ${{ inputs.publish }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: codeks-npm-${{ needs.prepare.outputs.version }}
+          path: ${{ runner.temp }}/npm
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: codeks-archives-${{ needs.prepare.outputs.version }}
+          path: ${{ runner.temp }}/archives
+      - name: Publish npm packages
+        run: python3 fork/tools/npm_package.py publish --dir "$RUNNER_TEMP/npm"
+      - name: Publish complete download archives
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NPM_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/release-notes.md" <<'EOF'
+          Linux、macOS 和 Windows 的 x64 / ARM64 完整包，包含 TUI voice runtime。
+
+          解压后运行 bin/codex（Windows 为 bin/codex.exe），保留整个目录布局。
+          macOS 包使用 ad-hoc 签名，未做 Apple Developer ID 签名或 notarization；浏览器下载后可能触发 Gatekeeper。macOS voice 要求 14.0 或更新版本。
+          npm 包：@wacry/codeks。来源、版本和 fork 改动见仓库 fork/README.md。
+          EOF
+          if ! gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
+              --title "codeks $NPM_VERSION" --notes-file "$RUNNER_TEMP/release-notes.md"
+          fi
+          gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --clobber "$RUNNER_TEMP/archives/"*
