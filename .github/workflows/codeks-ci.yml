@@ -1,0 +1,126 @@
+# codeks fork CI. Design: fork/patches/0003-codeks-ci.md
+name: codeks-ci
+
+on:
+  workflow_dispatch:
+    inputs:
+      crates:
+        description: Crates to test, separated by spaces. Empty means the crates that the fork patches touch.
+        required: false
+        default: ""
+
+concurrency:
+  group: codeks-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Patch stack
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      rust: ${{ steps.scope.outputs.rust }}
+      crates: ${{ steps.scope.outputs.crates }}
+      filter: ${{ steps.scope.outputs.filter }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          # Enough history to reach the upstream base below the patch stack.
+          fetch-depth: 100
+          persist-credentials: false
+      - name: Check patch stack and documents
+        run: python3 fork/tools/codeks.py check
+      - name: Select Rust scope
+        id: scope
+        env:
+          CRATES: ${{ inputs.crates }}
+        run: python3 fork/tools/codeks.py scope --crates "$CRATES" | tee -a "$GITHUB_OUTPUT"
+
+  rust:
+    name: Rust
+    needs: check
+    if: needs.check.outputs.rust == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    defaults:
+      run:
+        working-directory: codex-rs
+    env:
+      CRATES: ${{ needs.check.outputs.crates }}
+      FILTER: ${{ needs.check.outputs.filter }}
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      RUST_MIN_STACK: "8388608"
+      SCCACHE_CACHE_SIZE: 6G
+    steps:
+      - name: Free disk space
+        working-directory: /
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-ci
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update -y
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential pkg-config libcap-dev libasound2-dev bubblewrap
+      - uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
+        with:
+          components: rustfmt
+      - uses: ./.github/actions/setup-rusty-v8
+        with:
+          target: x86_64-unknown-linux-gnu
+      - uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
+        with:
+          tool: sccache@0.7.5,nextest@0.9.103
+      - name: Restore build cache
+        uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ${{ runner.temp }}/sccache
+          key: codeks-rust-${{ hashFiles('codex-rs/Cargo.lock', 'codex-rs/rust-toolchain.toml') }}-${{ github.run_id }}
+          restore-keys: |
+            codeks-rust-${{ hashFiles('codex-rs/Cargo.lock', 'codex-rs/rust-toolchain.toml') }}-
+            codeks-rust-
+      - name: Enable sccache
+        run: |
+          echo "SCCACHE_DIR=$RUNNER_TEMP/sccache" >> "$GITHUB_ENV"
+          echo "RUSTC_WRAPPER=$(command -v sccache)" >> "$GITHUB_ENV"
+      - name: Use the upstream development version
+        # Upstream tests expect version 0.0.0, as on upstream main. A release tag changes only this line.
+        run: |
+          sed -i -E '/^\[workspace\.package\]$/,/^\[/ s/^version = "[^"]*"$/version = "0.0.0"/' Cargo.toml
+          grep -A1 -x '\[workspace\.package\]' Cargo.toml | grep -qx 'version = "0.0.0"'
+      - name: Format
+        run: cargo fmt -- --config imports_granularity=Item --check
+      - name: Build CLI and test helpers
+        run: cargo build --bin codex --bin codex-code-mode-host --bin codex-linux-sandbox --bin test_stdio_server --bin test_streamable_http_server
+      - name: Test touched crates
+        if: env.CRATES != ''
+        run: |
+          args=()
+          for crate in $CRATES; do args+=(-p "$crate"); done
+          # Upstream tests that the patches change on purpose (ci_skip in the patch documents).
+          if [ -n "$FILTER" ]; then args+=(-E "$FILTER"); fi
+          cargo nextest run --no-fail-fast "${args[@]}"
+      - name: Save build cache
+        if: always() && !cancelled()
+        uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ${{ runner.temp }}/sccache
+          key: codeks-rust-${{ hashFiles('codex-rs/Cargo.lock', 'codex-rs/rust-toolchain.toml') }}-${{ github.run_id }}
+      - name: sccache stats
+        if: always()
+        run: sccache --show-stats || true
