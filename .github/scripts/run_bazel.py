@@ -96,7 +96,11 @@ def bazel_args_with_remote_config(
     ]
     # Ephemeral runners already retain active outputs in Bazel's output tree.
     # Avoid storing a second copy while using the GCS action cache.
-    if env.get("GITHUB_ACTIONS") == "true":
+    # codeks 0034: preserve the explicitly configured Windows voice action cache.
+    if env.get("GITHUB_ACTIONS") == "true" and not any(
+        arg == "--disk_cache" or arg.startswith("--disk_cache=")
+        for arg in configured_args[:separator_idx]
+    ):
         cache_args.append("--disk_cache=")
     bucket = env.get("CODEX_BAZEL_GCS_BUCKET")
     credentials = env.get("CODEX_BAZEL_GCS_CREDENTIALS")
