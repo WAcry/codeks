@@ -54,11 +54,17 @@ pub(crate) async fn emit_sub_agent_activity(
 fn agent_message_from_tool(
     message: String,
     source: &crate::tools::context::ToolCallSource,
+    namespace: Option<&str>,
 ) -> AgentMessage {
+    // codeks 0005: nested calls use the same namespace policy without changing their source.
     if matches!(
         source,
         crate::tools::context::ToolCallSource::DirectPlaintextMessage
-    ) {
+    ) || (matches!(
+        source,
+        crate::tools::context::ToolCallSource::CodeMode { .. }
+    ) && crate::tools::multi_agent_tool::uses_plaintext_messages(namespace))
+    {
         AgentMessage::Plaintext(message)
     } else {
         AgentMessage::Encrypted(message)
