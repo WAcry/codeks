@@ -226,7 +226,8 @@ async fn assert_pat_registry_reload(change: PatCredentialChange) -> Result<()> {
             "config_toml": {"enterprise_managed": []},
             "requirements_toml": {"enterprise_managed": []},
         })))
-        .expect(1)
+        // codeks 0006: account-managed config must not be fetched by the executor.
+        .expect(0)
         .mount(&config_server)
         .await;
     std::fs::write(
