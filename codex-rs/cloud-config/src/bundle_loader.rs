@@ -22,6 +22,9 @@ use tokio::task::JoinHandle;
 const CONFIG_SERVER_LOGIN_FAILURE: &str =
     "Config server sign-in failed. Check config_server.oauth and the credential store.";
 
+// codeks 0036: ignore account-managed configuration.
+const IGNORE_CLOUD_CONFIG: bool = true;
+
 pub async fn managed_config_auth_manager(
     auth: AuthConfig,
     requirements: &ConfigRequirementsToml,
@@ -98,6 +101,10 @@ pub async fn managed_config_bundle_loader(
         )
         .await;
     }
+    // codeks 0036: preserve explicit config servers, skip account defaults.
+    if IGNORE_CLOUD_CONFIG {
+        return CloudConfigBundleLoader::default();
+    }
     let endpoint = codex_backend_client::Client::new(chatgpt_base_url.clone(), factory.clone())
         .config_bundle_url();
     let policy = factory
@@ -126,6 +133,10 @@ pub async fn managed_config_bundle_loader_for_storage(
         )
         .await);
     }
+    // codeks 0036: preserve explicit config servers, skip account defaults.
+    if IGNORE_CLOUD_CONFIG {
+        return Ok(CloudConfigBundleLoader::default());
+    }
     let service =
         chatgpt_config_bundle_service_for_storage(auth_config, enable_codex_api_key_env).await?;
     Ok(managed_config_bundle_loader_for_service(service).0)
@@ -148,6 +159,10 @@ pub fn chatgpt_config_bundle_loader(
     codex_home: PathBuf,
     http_client_factory: HttpClientFactory,
 ) -> CloudConfigBundleLoader {
+    // codeks 0036: no request, cache, or background refresh.
+    if IGNORE_CLOUD_CONFIG {
+        return CloudConfigBundleLoader::default();
+    }
     let service = CloudConfigBundleService::new(
         auth_manager,
         Arc::new(BackendBundleClient::new(
@@ -196,6 +211,10 @@ pub async fn chatgpt_config_bundle_loader_for_storage(
     auth_config: AuthConfig,
     enable_codex_api_key_env: bool,
 ) -> std::io::Result<CloudConfigBundleLoader> {
+    // codeks 0036: no request, cache, or background refresh.
+    if IGNORE_CLOUD_CONFIG {
+        return Ok(CloudConfigBundleLoader::default());
+    }
     let service =
         chatgpt_config_bundle_service_for_storage(auth_config, enable_codex_api_key_env).await?;
     let (loader, _) = managed_config_bundle_loader_for_service(service);
@@ -215,6 +234,10 @@ pub async fn managed_config_bundle_loader_for_auth(
             /*enable_codex_api_key_env*/ false,
         )
         .await;
+    }
+    // codeks 0036: explicit config servers still apply, but implicit account policy does not.
+    if IGNORE_CLOUD_CONFIG {
+        return Ok(CloudConfigBundleLoader::default());
     }
     // Only skip the policy lookup when the supplied account's plan is known.
     if auth
@@ -259,12 +282,21 @@ pub async fn managed_config_bundle_loader_for_auth(
     ))
 }
 
+// codeks 0036: guard the credential-specific policy loader against implicit fetching.
+#[cfg(test)]
+#[path = "bundle_loader/codeks_auth_loader_tests.rs"]
+mod codeks_auth_loader_tests;
+
 /// Fetches directly from the network on each load, without reading or writing
 /// the disk cache or starting a background refresher.
 pub async fn chatgpt_config_bundle_loader_for_storage_without_cache(
     auth_config: AuthConfig,
     enable_codex_api_key_env: bool,
 ) -> std::io::Result<CloudConfigBundleLoader> {
+    // codeks 0036: no request.
+    if IGNORE_CLOUD_CONFIG {
+        return Ok(CloudConfigBundleLoader::default());
+    }
     let service = Arc::new(
         chatgpt_config_bundle_service_for_storage(auth_config, enable_codex_api_key_env)
             .await?

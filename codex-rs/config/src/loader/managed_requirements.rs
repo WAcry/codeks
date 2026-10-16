@@ -237,8 +237,10 @@ async fn load_requirements_layers(
             managed_preferences_requirements_layer = None;
         }
 
-        let requirements_file = system_requirements_toml_file_with_overrides(overrides)?;
-        system_requirements_layer = load_requirements_toml(fs, &requirements_file).await?;
+        // codeks 0036: skip system requirements without an explicit path.
+        if let Some(requirements_file) = system_requirements_toml_file_with_overrides(overrides)? {
+            system_requirements_layer = load_requirements_toml(fs, &requirements_file).await?;
+        }
     } else {
         managed_preferences_requirements_layer = None;
     }

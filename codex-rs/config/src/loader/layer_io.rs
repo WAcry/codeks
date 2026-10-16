@@ -64,8 +64,9 @@ pub(super) async fn load_config_layers_internal(
 
     #[cfg(windows)]
     let ignore_default_managed_config = managed_config_path.is_none();
+    // codeks 0036: ignore the default managed config path on every platform.
     #[cfg(not(windows))]
-    let ignore_default_managed_config = false;
+    let ignore_default_managed_config = managed_config_path.is_none();
 
     let managed_config_path = match managed_config_path {
         Some(path) => AbsolutePathBuf::from_absolute_path(path)?,
