@@ -52,6 +52,7 @@ pub(super) async fn handle_message_string_tool(
         turn,
         call_id,
         source,
+        tool_name, // codeks 0005: retain the namespace for nested message classification.
         ..
     } = invocation;
     let receiver_thread_id = resolve_agent_target(&session, &turn, &target).await?;
@@ -66,7 +67,7 @@ pub(super) async fn handle_message_string_tool(
             target: AgentTarget::Id(receiver_thread_id),
             resume_config,
             input: AgentInput::Message {
-                message: agent_message_from_tool(message, &source),
+                message: agent_message_from_tool(message, &source, tool_name.namespace.as_deref()),
                 mode,
             },
             start_options: TurnStartOptions {
