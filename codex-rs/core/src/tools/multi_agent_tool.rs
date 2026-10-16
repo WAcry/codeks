@@ -19,6 +19,11 @@ use std::sync::Arc;
 pub(crate) const MULTI_AGENT_V2_NAMESPACE_DESCRIPTION: &str =
     "Tools for spawning and managing sub-agents.";
 
+// codeks 0005: only the built-in `collaboration` namespace uses server-side argument encryption.
+pub(super) fn uses_plaintext_messages(namespace: Option<&str>) -> bool {
+    namespace.is_some_and(|namespace| namespace != "collaboration")
+}
+
 pub(super) fn multi_agent_v2_handler(
     handler: impl CoreToolRuntime + 'static,
     namespace: Option<&str>,
@@ -83,6 +88,14 @@ impl ToolExecutor<ToolInvocation> for MultiAgentV2ToolOverrides {
             }
             if let Some(parameters) = &self.parameters_override {
                 tool.parameters.clone_from(parameters);
+            }
+            // codeks 0005: custom namespaces send plaintext arguments, so drop encryption markers.
+            if uses_plaintext_messages(self.namespace.as_deref())
+                && let Some(properties) = &mut tool.parameters.properties
+            {
+                for property in properties.values_mut() {
+                    property.encrypted = None;
+                }
             }
         }
         match (&self.namespace, spec) {

@@ -69,6 +69,8 @@ mod cloud_config;
 mod code_mode;
 mod code_mode_elicitation;
 mod code_mode_model_messages;
+// codeks 0005: fork-owned test for plaintext agent messages.
+mod codeks_plaintext_agent_messages;
 mod codex_apps_protocol;
 mod codex_delegate;
 mod collaboration_instructions;
