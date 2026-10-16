@@ -148,6 +148,11 @@ pub(super) fn synchronize_managed_preferences() -> io::Result<()> {
 }
 
 fn load_managed_preference(key_name: &str) -> io::Result<Option<String>> {
+    // codeks 0006: never read administrator preferences delivered by MDM.
+    const IGNORE_MANAGED_PREFERENCES: bool = true;
+    if IGNORE_MANAGED_PREFERENCES {
+        return Ok(None);
+    }
     let key = CFString::new(key_name);
     let application = CFString::new(MANAGED_PREFERENCES_APPLICATION_ID);
     load_managed_preference_with(
