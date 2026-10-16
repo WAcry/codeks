@@ -49,12 +49,14 @@ pub async fn load_local_application_requirements(
             ..Default::default()
         });
     }
-    let system_path = super::system_requirements_toml_file_with_overrides(overrides)?;
-    let system = super::load_requirements_toml(fs, &system_path)
-        .await?
-        .map(application_layer)
-        .transpose()?
-        .flatten();
+    // codeks 0006: skip system requirements without an explicit path.
+    let system = match super::system_requirements_toml_file_with_overrides(overrides)? {
+        Some(system_path) => super::load_requirements_toml(fs, &system_path).await?,
+        None => None,
+    }
+    .map(application_layer)
+    .transpose()?
+    .flatten();
     #[cfg(target_os = "macos")]
     let mdm = {
         if overrides.macos_managed_config_requirements_base64.is_none() {
