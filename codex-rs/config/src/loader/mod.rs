@@ -269,22 +269,24 @@ pub async fn load_config_layers_state(
 
     // Include an entry for the "system" config folder, loading its config.toml,
     // if it exists.
-    let system_config_toml_file = system_config_toml_file_with_overrides(&overrides)?;
-    let system_layer = load_config_toml_for_required_layer(
-        fs,
-        &system_config_toml_file,
-        strict_config,
-        |config_toml| {
-            ConfigLayerEntry::new(
-                ConfigLayerSource::System {
-                    file: system_config_toml_file.clone(),
-                },
-                config_toml,
-            )
-        },
-    )
-    .await?;
-    layers.push(system_layer);
+    // codeks 0006: the system layer exists only for an explicit path.
+    if let Some(system_config_toml_file) = system_config_toml_file_with_overrides(&overrides)? {
+        let system_layer = load_config_toml_for_required_layer(
+            fs,
+            &system_config_toml_file,
+            strict_config,
+            |config_toml| {
+                ConfigLayerEntry::new(
+                    ConfigLayerSource::System {
+                        file: system_config_toml_file.clone(),
+                    },
+                    config_toml,
+                )
+            },
+        )
+        .await?;
+        layers.push(system_layer);
+    }
     layers.extend(cloud_config_layers);
 
     // Add the base user config layer. When profile-v2 is selected, add the
@@ -738,10 +740,11 @@ fn system_requirements_toml_file() -> io::Result<AbsolutePathBuf> {
 
 fn system_requirements_toml_file_with_overrides(
     overrides: &LoaderOverrides,
-) -> io::Result<AbsolutePathBuf> {
+) -> io::Result<Option<AbsolutePathBuf>> {
+    // codeks 0006: load only an explicit path; ignore the host-wide default.
     match &overrides.system_requirements_path {
-        Some(path) => AbsolutePathBuf::from_absolute_path(path),
-        None => system_requirements_toml_file(),
+        Some(path) => AbsolutePathBuf::from_absolute_path(path).map(Some),
+        None => Ok(None),
     }
 }
 
@@ -793,10 +796,11 @@ pub fn system_config_toml_file() -> io::Result<AbsolutePathBuf> {
 
 fn system_config_toml_file_with_overrides(
     overrides: &LoaderOverrides,
-) -> io::Result<AbsolutePathBuf> {
+) -> io::Result<Option<AbsolutePathBuf>> {
+    // codeks 0006: load only an explicit path; ignore the host-wide default.
     match &overrides.system_config_path {
-        Some(path) => AbsolutePathBuf::from_absolute_path(path),
-        None => system_config_toml_file(),
+        Some(path) => AbsolutePathBuf::from_absolute_path(path).map(Some),
+        None => Ok(None),
     }
 }
 
