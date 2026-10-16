@@ -108,6 +108,7 @@ async fn handle_spawn_agent(
         payload,
         call_id,
         source,
+        tool_name, // codeks 0005: retain the namespace for nested message classification.
         ..
     } = invocation;
     let turn = &step_context.turn;
@@ -127,7 +128,7 @@ async fn handle_spawn_agent(
         &call_id,
         ThreadSpawnRequest {
             task_name: args.task_name,
-            message: agent_message_from_tool(message, &source),
+            message: agent_message_from_tool(message, &source, tool_name.namespace.as_deref()),
             fork_mode: fork_mode.clone(),
             agent_type: args.agent_type.clone(),
             model: args.model,
