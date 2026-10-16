@@ -43,7 +43,10 @@ pub struct ToolCall {
 
 impl ToolCall {
     pub(crate) fn direct_source(&self) -> ToolCallSource {
-        if self.tool_name.namespace.as_deref() == Some("collaboration")
+        // codeks 0005: custom namespaces carry plaintext unless the server lists encrypted args.
+        let custom =
+            super::multi_agent_tool::uses_plaintext_messages(self.tool_name.namespace.as_deref());
+        if (custom || self.tool_name.namespace.as_deref() == Some("collaboration"))
             && matches!(
                 self.tool_name.name.as_str(),
                 "spawn_agent" | "send_message" | "followup_task"
@@ -51,7 +54,7 @@ impl ToolCall {
             && self
                 .encrypted_function_args
                 .as_ref()
-                .is_some_and(Vec::is_empty)
+                .map_or(custom, Vec::is_empty)
         {
             ToolCallSource::DirectPlaintextMessage
         } else {
