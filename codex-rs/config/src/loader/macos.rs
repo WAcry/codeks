@@ -27,6 +27,7 @@ use toml::Value as TomlValue;
 const MANAGED_PREFERENCES_APPLICATION_ID: &str = "com.openai.codex";
 const MANAGED_PREFERENCES_CONFIG_KEY: &str = "config_toml_base64";
 const MANAGED_PREFERENCES_REQUIREMENTS_KEY: &str = "requirements_toml_base64";
+const IGNORE_MANAGED_PREFERENCES: bool = true;
 
 #[link(name = "CoreFoundation", kind = "framework")]
 unsafe extern "C" {
@@ -134,6 +135,10 @@ fn load_managed_admin_requirements() -> io::Result<Option<String>> {
 }
 
 pub(super) fn synchronize_managed_preferences() -> io::Result<()> {
+    // codeks 0006: ignored MDM sources must not depend on preference synchronization.
+    if IGNORE_MANAGED_PREFERENCES {
+        return Ok(());
+    }
     #[link(name = "CoreFoundation", kind = "framework")]
     unsafe extern "C" {
         fn CFPreferencesAppSynchronize(application_id: CFStringRef) -> u8;
@@ -148,6 +153,10 @@ pub(super) fn synchronize_managed_preferences() -> io::Result<()> {
 }
 
 fn load_managed_preference(key_name: &str) -> io::Result<Option<String>> {
+    // codeks 0006: never read administrator preferences delivered by MDM.
+    if IGNORE_MANAGED_PREFERENCES {
+        return Ok(None);
+    }
     let key = CFString::new(key_name);
     let application = CFString::new(MANAGED_PREFERENCES_APPLICATION_ID);
     load_managed_preference_with(
