@@ -251,6 +251,13 @@ async fn multi_agent_catalog_messages_change_only_selected_tool_fields(
                 if matches!(name, "spawn_agent" | "send_message" | "followup_task") {
                     expected_tool["parameters"]["properties"]["message"]["encrypted"] = json!(true);
                 }
+                // codeks 0005: custom namespaces send no encryption markers.
+                if !matches!(exposure, Exposure::Plain) {
+                    expected_tool["parameters"]["properties"]["message"]
+                        .as_object_mut()
+                        .expect("message schema")
+                        .remove("encrypted");
+                }
                 if matches!(exposure, Exposure::CodeMode) {
                     let description = expected_tool["description"].as_str().expect("description");
                     let (prefix, signature) =
