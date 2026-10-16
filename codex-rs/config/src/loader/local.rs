@@ -115,9 +115,21 @@ pub(super) async fn load_local_config_layers_with_overrides(
     )
     .await?;
 
-    let system_file = system_config_toml_file_with_overrides(overrides)?;
-    let system =
-        load_config_toml_for_required_layer_raw(fs, &system_file, /*strict_config*/ false).await?;
+    // codeks 0006: without an explicit path, keep the system slot empty.
+    let (system_file, system) = match system_config_toml_file_with_overrides(overrides)? {
+        Some(file) => {
+            let system =
+                load_config_toml_for_required_layer_raw(fs, &file, /*strict_config*/ false).await?;
+            (file, system)
+        }
+        None => (
+            super::system_config_toml_file()?,
+            super::LoadedTomlFile {
+                toml: TomlValue::Table(toml::map::Map::new()),
+                base_dir: codex_home.clone(),
+            },
+        ),
+    };
     let user_file = codex_home.join(CONFIG_TOML_FILE);
     let user =
         load_config_toml_for_required_layer_raw(fs, &user_file, /*strict_config*/ false).await?;
@@ -295,8 +307,11 @@ async fn local_requirements_layers(
     overrides: &LoaderOverrides,
     loaded_managed: layer_io::LoadedConfigLayers,
 ) -> io::Result<LocalTomlLayerStack<RequirementSource>> {
-    let system_file = system_requirements_toml_file_with_overrides(overrides)?;
-    let system = load_requirements_toml(fs, &system_file).await?;
+    // codeks 0006: skip system requirements without an explicit path.
+    let system = match system_requirements_toml_file_with_overrides(overrides)? {
+        Some(system_file) => load_requirements_toml(fs, &system_file).await?,
+        None => None,
+    };
     let cloud_insertion_index = usize::from(system.is_some());
     let mut entries = Vec::new();
     entries.extend(system);
