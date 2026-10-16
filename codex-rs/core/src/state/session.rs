@@ -372,7 +372,9 @@ impl SessionState {
     }
 
     pub(crate) fn server_reasoning_included(&self) -> bool {
-        self.server_reasoning_included
+        // codeks 0007: provider usage already counts earlier reasoning, with or without the header.
+        const USAGE_INCLUDES_REASONING: bool = true;
+        self.server_reasoning_included || USAGE_INCLUDES_REASONING
     }
 
     pub(crate) fn record_mcp_dependency_prompted<I>(&mut self, names: I)
