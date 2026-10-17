@@ -68,7 +68,7 @@ async fn policy_capacity_classification_preserves_overload_retry_behavior() {
     }
 }
 
-/// Flex failures remain terminal even with retry headers and a later completed event.
+/// codeks 0008: Flex failures end this stream and preserve advice for a later attempt.
 #[tokio::test(start_paused = true)]
 async fn flex_failure_with_retry_header_ends_stream_immediately() {
     let error = json!({
@@ -107,7 +107,10 @@ async fn flex_failure_with_retry_header_ends_stream_immediately() {
                 error.to_codex_protocol_error(),
                 error.retry_delay(/*retry_count*/ 1)
             ),
-            (CodexErrorInfo::FlexUnavailable, None)
+            (
+                CodexErrorInfo::FlexUnavailable,
+                Some(Duration::from_secs(300))
+            )
         );
         assert!(stream.next().await.is_none());
     }

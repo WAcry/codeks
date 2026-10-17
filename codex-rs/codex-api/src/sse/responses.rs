@@ -670,7 +670,8 @@ async fn process_sse_with_treatment(
                 let error = error.into_api_error();
                 if matches!(
                     error,
-                    ApiError::FlexUnavailable | ApiError::ResponseIncomplete(_)
+                    // codeks 0008: end this Flex stream while retaining advice for turn retries.
+                    ApiError::FlexUnavailable { .. } | ApiError::ResponseIncomplete(_)
                 ) {
                     let _ = tx_event.send(Err(error)).await;
                     return;

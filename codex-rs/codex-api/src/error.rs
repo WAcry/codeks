@@ -1,4 +1,5 @@
 use crate::rate_limits::RateLimitError;
+use crate::responses_headers::json_headers_to_http_headers;
 use codex_client::TransportError;
 use codex_http_client::RetryAfter;
 use codex_protocol::error::ResponseIncompleteError;
@@ -56,7 +57,8 @@ pub enum ApiError {
         misalignment: Option<MisalignmentErrorDetails>,
     },
     #[error("Flex capacity unavailable.")]
-    FlexUnavailable,
+    // codeks 0008: retain retry advice for Flex capacity failures.
+    FlexUnavailable { retry_after: Option<RetryAfter> },
     /// Server-confirmed capacity failure on a policy-restricted route.
     #[error("policy-restricted capacity unavailable")]
     PolicyCapacityUnavailable { retry_after: Option<RetryAfter> },
@@ -78,7 +80,14 @@ pub(crate) fn parse_terminal_provider_error(
     let code = error.get("code")?.as_str()?;
     match (code, status) {
         ("flex_unavailable", None | Some(StatusCode::TOO_MANY_REQUESTS)) => {
-            Some(ApiError::FlexUnavailable)
+            // codeks 0008: preserve advice in both HTTP and streamed error payloads.
+            let retry_after = error
+                .get("headers")
+                .and_then(Value::as_object)
+                .and_then(|headers| {
+                    RetryAfter::from_headers(&json_headers_to_http_headers(headers))
+                });
+            Some(ApiError::FlexUnavailable { retry_after })
         }
         (
             "model_not_found",
