@@ -172,7 +172,7 @@ fn map_http_error_classifies_provider_codes() {
             503,
             "server_is_overloaded",
             CodexErrorInfo::ServerOverloaded,
-            false,
+            true, // codeks 0008: ordinary capacity failures also retry without advice.
         ),
         (503, "slow_down", CodexErrorInfo::RateLimitExceeded, true),
         (
