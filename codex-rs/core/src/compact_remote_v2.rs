@@ -74,7 +74,8 @@ pub(crate) const RETAINED_MESSAGE_TOKEN_BUDGET: usize = 64_000;
 const MAX_RETAINED_AGENT_MESSAGE_TOKENS: i64 = 10_000;
 // Compact attempts can run much longer than normal turns, so keep the per-transport
 // retry budget smaller than the general Responses stream retry budget.
-const MAX_REMOTE_COMPACTION_V2_STREAM_RETRIES: u64 = 2;
+// codeks 0008: no extra cap; remote compaction uses the provider's stream_max_retries.
+const MAX_REMOTE_COMPACTION_V2_STREAM_RETRIES: u64 = u64::MAX;
 
 pub(crate) async fn run_inline_remote_auto_compact_task(
     sess: Arc<Session>,
