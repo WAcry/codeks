@@ -96,7 +96,8 @@ pub fn telemetry_api_error_message(error: &ApiError) -> String {
         ApiError::PolicyCapacityUnavailable { .. } => {
             "policy-restricted capacity unavailable".to_string()
         }
-        ApiError::FlexUnavailable => "flex capacity unavailable".to_string(),
+        // codeks 0008: keep the category independent of Flex retry advice.
+        ApiError::FlexUnavailable { .. } => "flex capacity unavailable".to_string(),
     }
 }
 
