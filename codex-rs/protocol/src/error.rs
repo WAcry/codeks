@@ -446,7 +446,11 @@ impl CodexErr {
             | CodexErrorDetails::BioPolicy { .. }
             | CodexErrorDetails::MisalignmentPolicyViolation { .. } => None,
             CodexErrorDetails::ServerOverloaded | CodexErrorDetails::RetryLimit(_) => {
-                self.server_retry_delay()
+                // codeks 0008: capacity errors without server advice use local backoff too.
+                Some(
+                    self.server_retry_delay()
+                        .unwrap_or_else(|| backoff(retry_count)),
+                )
             }
             CodexErrorDetails::Stream(..)
             | CodexErrorDetails::ContentFilter
