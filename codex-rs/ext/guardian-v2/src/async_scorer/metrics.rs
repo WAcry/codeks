@@ -59,7 +59,8 @@ pub(super) fn sampler_failure_reason(error: &LunaSamplerError) -> &'static str {
             | ApiError::MisalignmentPolicyViolation { .. } => "policy_error",
             ApiError::ServerOverloaded { .. } => "server_overloaded",
             ApiError::PolicyCapacityUnavailable { .. } => "policy_capacity_unavailable",
-            ApiError::FlexUnavailable => "flex_unavailable",
+            // codeks 0008: retain Flex telemetry when retry advice is present.
+            ApiError::FlexUnavailable { .. } => "flex_unavailable",
         },
     }
 }

@@ -444,13 +444,19 @@ impl CodexErr {
             | CodexErrorDetails::Spawn
             | CodexErrorDetails::SessionConfiguredNotFirstEvent
             | CodexErrorDetails::UsageLimitReached(_)
-            | CodexErrorDetails::FlexUnavailable
             | CodexErrorDetails::CyberPolicy { .. }
             | CodexErrorDetails::BioPolicy { .. }
             | CodexErrorDetails::MisalignmentPolicyViolation { .. } => None,
             CodexErrorDetails::ServerOverloaded
             | CodexErrorDetails::PolicyCapacityUnavailable
-            | CodexErrorDetails::RetryLimit(_) => self.server_retry_delay(),
+            | CodexErrorDetails::FlexUnavailable
+            | CodexErrorDetails::RetryLimit(_) => {
+                // codeks 0008: capacity errors without server advice use local backoff too.
+                Some(
+                    self.server_retry_delay()
+                        .unwrap_or_else(|| backoff(retry_count)),
+                )
+            }
             CodexErrorDetails::Stream(..)
             | CodexErrorDetails::ContentFilter
             | CodexErrorDetails::RateLimitExceeded(_)
