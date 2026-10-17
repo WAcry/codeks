@@ -109,7 +109,7 @@ async fn policy_capacity_classification_preserves_overload_retry_behavior() {
     }
 }
 
-/// Terminal provider failures ignore retry headers and stop before a later completed event.
+/// codeks 0037: terminal events stop the stream, but Flex retains retry advice.
 #[tokio::test(start_paused = true)]
 async fn terminal_failure_with_retry_header_ends_stream_immediately() {
     for (code, expected) in [
@@ -166,7 +166,11 @@ async fn terminal_failure_with_retry_header_ends_stream_immediately() {
                     error.to_codex_protocol_error(),
                     error.retry_delay(/*retry_count*/ 1)
                 ),
-                (expected.clone(), None)
+                (
+                    expected.clone(),
+                    // codeks 0037: Flex is retried after its server-provided delay.
+                    (code == "flex_unavailable").then_some(Duration::from_secs(300))
+                )
             );
             assert!(stream.next().await.is_none());
         }

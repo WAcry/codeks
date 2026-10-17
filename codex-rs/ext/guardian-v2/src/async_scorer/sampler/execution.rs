@@ -118,7 +118,8 @@ impl SamplingExecution {
                 | ApiError::ContentFilter
                 | ApiError::ServerOverloaded { .. }
                 | ApiError::PolicyCapacityUnavailable { .. }
-                | ApiError::FlexUnavailable,
+                // codeks 0037: Flex remains retryable with its advice payload.
+                | ApiError::FlexUnavailable { .. },
             )
             | LunaSamplerError::Api(ApiError::Transport(
                 TransportError::RetryLimit

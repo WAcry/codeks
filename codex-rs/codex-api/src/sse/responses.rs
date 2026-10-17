@@ -706,7 +706,8 @@ async fn process_sse_with_treatment(
                 let error = error.into_api_error();
                 if matches!(
                     error,
-                    ApiError::FlexUnavailable
+                    // codeks 0037: end the Flex stream while retaining advice for turn retries.
+                    ApiError::FlexUnavailable { .. }
                         | ApiError::ContextWindowExceeded
                         | ApiError::InvalidRequest { .. }
                         | ApiError::SessionBudgetExceeded
