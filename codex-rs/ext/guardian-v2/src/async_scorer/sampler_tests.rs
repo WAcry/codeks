@@ -1190,9 +1190,10 @@ async fn sampler_limits_transient_recovery_attempts() -> Result<()> {
         .await
         .expect_err("sampling should stop after the bounded retries");
 
+    // codeks 0008: retry metadata does not change the final error category.
     assert!(matches!(
         error,
-        LunaSamplerError::Api(ApiError::FlexUnavailable)
+        LunaSamplerError::Api(ApiError::FlexUnavailable { .. })
     ));
     metrics.assert_outcome("failure", /*attempts*/ 3, "flex_unavailable");
     assert_eq!(first.single_connection().len(), 1);

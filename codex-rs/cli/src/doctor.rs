@@ -2464,12 +2464,12 @@ fn websocket_error_detail(err: &ApiError) -> String {
         ApiError::ResponseIncomplete(_) => {
             "handshake error: incomplete response: [redacted]".to_string()
         }
-        // These variants format fixed text; retry metadata is typed and never printed.
+        // codeks 0008: these variants, including Flex advice, only format fixed text.
         ApiError::ContentFilter
         | ApiError::ContextWindowExceeded
         | ApiError::QuotaExceeded
         | ApiError::UsageNotIncluded
-        | ApiError::FlexUnavailable
+        | ApiError::FlexUnavailable { .. }
         | ApiError::ServerOverloaded { .. }
         | ApiError::PolicyCapacityUnavailable { .. } => format!("handshake error: {err}"),
         ApiError::Retryable { .. } => "handshake error: retryable error: [redacted]".to_string(),
