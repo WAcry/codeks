@@ -2748,6 +2748,11 @@ async fn responses_websocket_v2_after_error_uses_full_create_without_previous_re
     json!({"type": "error", "error": {"code": "server_is_overloaded"}}),
     CodexErrorInfo::ServerOverloaded; "statusless overload without advice"
 )]
+// codeks 0037: Flex advice may be in the event headers, outside the error body.
+#[test_case::test_case(
+    json!({"type": "error", "headers": {"Retry-After": "7"}, "error": {"code": "flex_unavailable"}}),
+    CodexErrorInfo::FlexUnavailable; "statusless flex with event advice"
+)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn responses_websocket_v2_surfaces_terminal_error_without_close_handshake(
     failure: serde_json::Value,
@@ -2774,6 +2779,8 @@ async fn responses_websocket_v2_surfaces_terminal_error_without_close_handshake(
     stream_until_complete(&mut session, &harness, &prompt_one).await;
 
     let responses_metadata = turn_metadata(&harness, /*turn_id*/ None);
+    // codeks 0037: bound the time at which the advice can be captured.
+    let request_started = tokio::time::Instant::now();
     let mut second_stream = session
         .stream(
             &prompt_two,
@@ -2799,13 +2806,23 @@ async fn responses_websocket_v2_surfaces_terminal_error_without_close_handshake(
     .await
     .expect("timed out waiting for terminal websocket error");
 
-    assert_eq!(
-        (
-            error.to_codex_protocol_error(),
-            error.retry_delay(/*retry_count*/ 1),
-        ),
-        (expected_error, None),
-    );
+    assert_eq!(error.to_codex_protocol_error(), expected_error);
+    // codeks 0037: a stream error can end this attempt and still retry at the turn layer.
+    let delay = error.retry_delay(/*retry_count*/ 1);
+    match expected_error {
+        CodexErrorInfo::ServerOverloaded => assert!(delay.is_some()),
+        CodexErrorInfo::FlexUnavailable => {
+            let deadline = error
+                .retry_after()
+                .expect("Flex should retain server advice")
+                .deadline();
+            let advised_delay = Duration::from_secs(7);
+            let earliest = request_started + advised_delay;
+            let latest = tokio::time::Instant::now() + advised_delay;
+            assert!((earliest..=latest).contains(&deadline), "{deadline:?}");
+        }
+        _ => assert_eq!(delay, None),
+    }
 
     server.shutdown().await;
 }

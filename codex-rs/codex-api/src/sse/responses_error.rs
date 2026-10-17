@@ -34,7 +34,13 @@ pub(super) fn parse_error_event(
     headers: Option<&Value>,
 ) -> Option<ApiError> {
     if let Some(error) = parse_terminal_provider_error(error, /*status*/ None) {
-        return Some(error);
+        // codeks 0037: statusless Flex errors can carry advice at the event level.
+        return Some(match error {
+            ApiError::FlexUnavailable { retry_after } => ApiError::FlexUnavailable {
+                retry_after: retry_after.or_else(|| retry_after_header(headers)),
+            },
+            error => error,
+        });
     }
     let error = error?;
     let code = error.get("code")?.as_str()?;

@@ -110,7 +110,7 @@ async fn policy_capacity_classification_preserves_overload_retry_behavior() {
     }
 }
 
-/// Terminal provider failures ignore retry headers and stop before a later completed event.
+/// codeks 0037: terminal events stop the stream, but Flex retains retry advice.
 #[tokio::test(start_paused = true)]
 async fn terminal_failure_with_retry_header_ends_stream_immediately() {
     for (code, expected) in [
@@ -179,7 +179,11 @@ async fn terminal_failure_with_retry_header_ends_stream_immediately() {
                     error.to_codex_protocol_error(),
                     error.retry_delay(/*retry_count*/ 1)
                 ),
-                (expected.clone(), None)
+                (
+                    expected.clone(),
+                    // codeks 0037: Flex is retried after its server-provided delay.
+                    (code == "flex_unavailable").then_some(Duration::from_secs(300))
+                )
             );
             assert!(stream.next().await.is_none());
         }
@@ -412,6 +416,8 @@ async fn overload_advice_survives_keep_open_sse_in_both_event_forms() {
             "policy_capacity_unavailable",
             CodexErrorInfo::PolicyCapacityUnavailable,
         ),
+        // codeks 0037: Flex shares the two retry advice locations with overload errors.
+        ("flex_unavailable", CodexErrorInfo::FlexUnavailable),
     ] {
         for (header, delay) in [
             (Some("7"), Some(Duration::from_secs(7))),
@@ -425,7 +431,14 @@ async fn overload_advice_survives_keep_open_sse_in_both_event_forms() {
             for event in error_forms(detail) {
                 let error = map_api_error(keep_open_error(event).await);
                 assert_eq!(error.to_codex_protocol_error(), expected);
-                assert_eq!(error.retry_delay(/*retry_count*/ 1), delay, "{code}");
+                // codeks 0037: the absence of valid server advice still permits backoff.
+                assert_eq!(error.server_retry_delay(), delay, "{code}");
+                let retry_delay = error.retry_delay(/*retry_count*/ 1);
+                if delay.is_some() {
+                    assert_eq!(retry_delay, delay, "{code}");
+                } else {
+                    assert!(retry_delay.is_some(), "{code}");
+                }
             }
         }
         let event = json!({"type": "error", "headers": {"Retry-After": "9"}, "error": {"code": code, "headers": {"Retry-After": "3"}}});

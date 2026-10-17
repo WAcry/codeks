@@ -169,7 +169,8 @@ impl Transport {
             | ApiError::ContentFilter
             | ApiError::ServerOverloaded { .. }
             | ApiError::PolicyCapacityUnavailable { .. }
-            | ApiError::FlexUnavailable
+            // codeks 0037: Flex now carries retry advice.
+            | ApiError::FlexUnavailable { .. }
             | ApiError::Transport(
                 TransportError::RetryLimit
                 | TransportError::Timeout

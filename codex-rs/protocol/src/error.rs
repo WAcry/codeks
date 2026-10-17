@@ -481,11 +481,13 @@ impl CodexErr {
     pub fn retry_delay(&self, retry_count: u64) -> Option<Duration> {
         match self.retry_policy() {
             RetryPolicy::Never => None,
-            RetryPolicy::ServerDirected => self.server_retry_delay(),
-            RetryPolicy::Backoff | RetryPolicy::FallBackToHttp => Some(
-                self.server_retry_delay()
-                    .unwrap_or_else(|| backoff(retry_count)),
-            ),
+            // codeks 0037: capacity failures also back off when the server omits advice.
+            RetryPolicy::ServerDirected | RetryPolicy::Backoff | RetryPolicy::FallBackToHttp => {
+                Some(
+                    self.server_retry_delay()
+                        .unwrap_or_else(|| backoff(retry_count)),
+                )
+            }
         }
     }
 
@@ -529,7 +531,6 @@ impl CodexErr {
             | CodexErrorDetails::Spawn
             | CodexErrorDetails::SessionConfiguredNotFirstEvent
             | CodexErrorDetails::UsageLimitReached(_)
-            | CodexErrorDetails::FlexUnavailable
             | CodexErrorDetails::CyberPolicy { .. }
             | CodexErrorDetails::BioPolicy { .. }
             | CodexErrorDetails::WorkspaceAccessDenied(_)
@@ -537,6 +538,8 @@ impl CodexErr {
             | CodexErrorDetails::MisalignmentPolicyViolation { .. } => RetryPolicy::Never,
             CodexErrorDetails::ServerOverloaded
             | CodexErrorDetails::PolicyCapacityUnavailable
+            // codeks 0037: Flex capacity failures share the server-directed retry policy.
+            | CodexErrorDetails::FlexUnavailable
             | CodexErrorDetails::RetryLimit(_) => RetryPolicy::ServerDirected,
             CodexErrorDetails::WebsocketMessageTooLarge => RetryPolicy::FallBackToHttp,
             CodexErrorDetails::Stream(..)
