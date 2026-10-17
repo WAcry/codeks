@@ -2517,7 +2517,8 @@ fn websocket_error_detail(err: &ApiError) -> String {
         | ApiError::QuotaExceeded
         | ApiError::UsageNotIncluded
         | ApiError::SessionBudgetExceeded
-        | ApiError::FlexUnavailable
+        // codeks 0008: Flex keeps its retry advice but formats as fixed text.
+        | ApiError::FlexUnavailable { .. }
         | ApiError::ServerOverloaded { .. }
         | ApiError::PolicyCapacityUnavailable { .. } => format!("handshake error: {err}"),
         ApiError::Retryable { .. } => "handshake error: retryable error: [redacted]".to_string(),

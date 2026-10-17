@@ -26,6 +26,8 @@ pub fn map_api_error(err: ApiError) -> CodexErr {
         | ApiError::RateLimitExceeded { retry_after, .. }
         | ApiError::ServerOverloaded { retry_after }
         | ApiError::PolicyCapacityUnavailable { retry_after }
+        // codeks 0008: keep Flex advice when mapping streamed or HTTP failures.
+        | ApiError::FlexUnavailable { retry_after }
         | ApiError::Transport(TransportError::Http { retry_after, .. }) => *retry_after,
         ApiError::Transport(_)
         | ApiError::Api { .. }
@@ -37,7 +39,6 @@ pub fn map_api_error(err: ApiError) -> CodexErr {
         | ApiError::QuotaExceeded
         | ApiError::UsageNotIncluded
         | ApiError::SessionBudgetExceeded
-        | ApiError::FlexUnavailable
         | ApiError::RateLimit(_)
         | ApiError::InvalidRequest { .. }
         | ApiError::AccessProgramNotEnabled { .. }
@@ -79,7 +80,7 @@ fn map_api_error_details(err: ApiError) -> CodexErr {
         ApiError::PolicyCapacityUnavailable { .. } => {
             CodexErr::new(CodexErrorDetails::PolicyCapacityUnavailable)
         }
-        ApiError::FlexUnavailable => CodexErr::new(CodexErrorDetails::FlexUnavailable),
+        ApiError::FlexUnavailable { .. } => CodexErr::new(CodexErrorDetails::FlexUnavailable),
         ApiError::Api { status, message } => {
             let user_message = api_error_user_message(status, &message);
             CodexErr::UnexpectedStatus(UnexpectedResponseError {
