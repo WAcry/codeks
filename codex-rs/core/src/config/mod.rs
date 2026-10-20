@@ -1183,9 +1183,9 @@ pub struct Config {
     /// Collection of various notices we show the user
     pub notices: Notice,
 
+    // codeks 0009: make upstream update checks opt-in.
     /// When `true`, checks for Codex updates on startup and surfaces update prompts.
-    /// Set to `false` only if your Codex updates are centrally managed.
-    /// Defaults to `true`.
+    /// Defaults to `false`.
     pub check_for_update_on_startup: bool,
 
     /// When true, disables burst-paste detection for typed input entirely.
@@ -4311,7 +4311,8 @@ impl Config {
         let compact_prompt = compact_prompt.or(file_compact_prompt);
         let review_model = override_review_model.or(cfg.review_model);
 
-        let check_for_update_on_startup = cfg.check_for_update_on_startup.unwrap_or(true);
+        // codeks 0009: keep upstream update checks opt-in for this fork.
+        let check_for_update_on_startup = cfg.check_for_update_on_startup.unwrap_or(false);
         let model_catalog = load_model_catalog(cfg.model_catalog_json.clone())?;
 
         let log_dir = cfg
