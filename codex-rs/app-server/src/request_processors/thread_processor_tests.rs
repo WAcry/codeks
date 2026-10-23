@@ -717,6 +717,7 @@ mod thread_processor_behavior_tests {
             service_tier: Some(Some("priority".to_string())),
             cwd: None,
             runtime_workspace_roots: None,
+            environments: None, // codeks 0010: preserve omitted environment overrides in this fixture.
             approval_policy: None,
             approvals_reviewer: None,
             sandbox: None,
