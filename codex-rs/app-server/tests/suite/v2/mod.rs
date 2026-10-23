@@ -139,6 +139,7 @@ mod sqlite_recovery;
 mod thread_archive;
 mod thread_attachments;
 mod thread_delete;
+mod thread_environment_overrides; // codeks 0010: exercise resume and fork environment overrides.
 mod thread_environments;
 mod thread_fork;
 #[path = "thread_fork_multi_agent_tests.rs"]
