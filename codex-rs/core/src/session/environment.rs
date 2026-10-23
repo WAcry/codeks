@@ -202,11 +202,10 @@ impl Session {
                 self.services
                     .turn_environments
                     .set_active_thread_defaults(configuration.inferred_environment_config());
-                if environments != self.services.turn_environments.selections() {
-                    self.services
-                        .turn_environments
-                        .update_selections(&environments);
-                }
+                // codeks 0011: retry failed startup even when the selected workspace is unchanged.
+                self.services
+                    .turn_environments
+                    .update_selections(&environments);
             }
             self.services.turn_environments.snapshot()
         };
