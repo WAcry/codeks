@@ -187,6 +187,8 @@ mod realtime_sideband_endpoint;
 mod realtime_system_proxy;
 mod reasoning_effort_override;
 mod remote_env;
+#[cfg(unix)] // codeks 0011: cover selected executor recovery with a native shell.
+mod remote_env_retry;
 mod remote_models;
 mod request_compression;
 #[cfg(not(target_os = "windows"))]
