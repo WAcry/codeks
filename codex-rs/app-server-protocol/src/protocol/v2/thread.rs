@@ -392,6 +392,12 @@ pub struct ThreadResumeParams {
     #[experimental("thread/resume.runtimeWorkspaceRoots")]
     #[ts(optional = nullable)]
     pub runtime_workspace_roots: Option<Vec<AbsolutePathBuf>>,
+    // codeks 0010: select environments before cold-resume startup work.
+    /// Environments for a cold resume; omission preserves default selection and an empty list disables access.
+    /// A loaded thread must already have this selection. Omit for parent-controlled cold sub-agents.
+    #[experimental("thread/resume.environments")]
+    #[ts(optional = nullable)]
+    pub environments: Option<Vec<TurnEnvironmentParams>>,
     #[experimental(nested)]
     #[ts(optional = nullable)]
     pub approval_policy: Option<AskForApproval>,
@@ -601,6 +607,12 @@ pub struct ThreadForkParams {
     #[experimental("thread/fork.runtimeWorkspaceRoots")]
     #[ts(optional = nullable)]
     pub runtime_workspace_roots: Option<Vec<AbsolutePathBuf>>,
+    // codeks 0010: select environments before ordinary fork startup work.
+    /// Environments for the fork; omission preserves default selection and an empty list disables access.
+    /// Cannot be combined with `experimentalPredictionMode`.
+    #[experimental("thread/fork.environments")]
+    #[ts(optional = nullable)]
+    pub environments: Option<Vec<TurnEnvironmentParams>>,
     #[experimental(nested)]
     #[ts(optional = nullable)]
     pub approval_policy: Option<AskForApproval>,
