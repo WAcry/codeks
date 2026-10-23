@@ -6,6 +6,10 @@ mod daemon_snapshot;
 
 mod workspace_switching;
 
+// codeks 0010: keep loaded-thread environment checks separate from resume orchestration.
+#[path = "thread_environment_overrides.rs"]
+mod thread_environment_overrides;
+
 use super::persisted_resume_settings::PersistedResumeSettings;
 use super::persisted_resume_settings::latest_owned_thread_settings;
 use super::persisted_resume_settings::latest_persisted_model_settings;
@@ -3989,6 +3993,8 @@ impl ThreadRequestProcessor {
             service_tier,
             cwd,
             runtime_workspace_roots,
+            // codeks 0010: carry explicit environment selection into cold startup.
+            environments,
             approval_policy,
             approvals_reviewer,
             sandbox,
@@ -4086,6 +4092,12 @@ impl ThreadRequestProcessor {
             && let Some((source, _)) = thread_history.get_resumed_session_sources()
             && !can_accept_direct_input(thread_history.get_multi_agent_version(), &source)
         {
+            // codeks 0010: child executors remain controlled by their parent.
+            if environments.is_some() {
+                return Err(invalid_request(
+                    "cannot override environments when resuming a parent-controlled sub-agent; omit environments and resume through its parent",
+                ));
+            }
             let ThreadResumeTarget::Client(request_id) = target else {
                 return Ok(ControlFlow::Break(()));
             };
@@ -4324,10 +4336,15 @@ impl ThreadRequestProcessor {
         }
         let response_history = thread_history.clone();
 
+        // codeks 0010: resolve before initial MCP setup and automatic goal continuation.
+        let environments =
+            resolve_turn_environment_requests(self.thread_manager.as_ref(), environments)?;
         match self
             .thread_manager
             .start_thread(StartThreadOptions {
                 initial_history: thread_history,
+                // codeks 0010: preserve Some([]) rather than selecting defaults.
+                environments,
                 parent_trace: match target {
                     ThreadResumeTarget::Client(request_id) => {
                         self.request_trace_context(request_id).await
@@ -4694,6 +4711,12 @@ impl ThreadRequestProcessor {
             }
             let (config_snapshot, selected_service_tier) =
                 existing_thread.resume_config_snapshot().await;
+            // codeks 0010: never silently rejoin a different execution destination.
+            thread_environment_overrides::validate_loaded_thread_environments(
+                self.thread_manager.as_ref(),
+                params,
+                &config_snapshot,
+            )?;
             let mismatch_details = collect_resume_override_mismatches(
                 params,
                 &config_snapshot,
@@ -5263,6 +5286,8 @@ impl ThreadRequestProcessor {
             || params.service_tier.is_some()
             || params.cwd.is_some()
             || params.runtime_workspace_roots.is_some()
+            // codeks 0010: prediction forks retain their existing parent-inheritance contract.
+            || params.environments.is_some()
             || params.approval_policy.is_some()
             || params.approvals_reviewer.is_some()
             || params.sandbox.is_some()
@@ -5295,6 +5320,8 @@ impl ThreadRequestProcessor {
             service_tier,
             cwd,
             runtime_workspace_roots,
+            // codeks 0010: carry explicit environment selection into fork startup.
+            environments,
             approval_policy,
             approvals_reviewer,
             sandbox,
@@ -5308,6 +5335,9 @@ impl ThreadRequestProcessor {
             exclude_turns,
             defer_goal_continuation,
         } = params;
+        // codeks 0010: use the same environment and path validation as thread/start.
+        let environments =
+            resolve_turn_environment_requests(self.thread_manager.as_ref(), environments)?;
         let include_turns = !exclude_turns;
         if attach_to_source {
             if ephemeral || defer_goal_continuation {
@@ -5612,6 +5642,8 @@ impl ThreadRequestProcessor {
                 .map_err(|err| config_load_error(&err))?;
             StartThreadOptions {
                 client_mcp_extensions,
+                // codeks 0010: bind the ordinary fork before its initial capabilities are built.
+                environments,
                 ..StartThreadOptions::new(config)
             }
         };

@@ -400,6 +400,9 @@
       },
       "type": "object"
     },
+    "LegacyAppPathString": {
+      "type": "string"
+    },
     "LocalShellAction": {
       "oneOf": [
         {
@@ -1551,6 +1554,31 @@
           "description": "Optional turn pagination direction; defaults to descending."
         }
       },
+      "type": "object"
+    },
+    "TurnEnvironmentParams": {
+      "properties": {
+        "cwd": {
+          "$ref": "#/definitions/LegacyAppPathString"
+        },
+        "environmentId": {
+          "type": "string"
+        },
+        "runtimeWorkspaceRoots": {
+          "description": "Environment-native runtime workspace roots. Omitted defaults to `cwd`.",
+          "items": {
+            "$ref": "#/definitions/LegacyAppPathString"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "cwd",
+        "environmentId"
+      ],
       "type": "object"
     },
     "TurnItemsView": {
