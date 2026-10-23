@@ -420,6 +420,12 @@ pub struct ThreadResumeParams {
     #[schemars(with = "Option<Vec<codex_utils_absolute_path::AbsolutePathBuf>>")]
     #[ts(as = "Option<Vec<codex_utils_absolute_path::AbsolutePathBuf>>")]
     pub runtime_workspace_roots: Option<Vec<LegacyAppPathString>>,
+    // codeks 0039: select environments before cold-resume startup work.
+    /// Environments for a cold resume; omission preserves default selection and an empty list disables access.
+    /// A loaded thread must already have this selection. Omit for parent-controlled cold sub-agents.
+    #[experimental("thread/resume.environments")]
+    #[ts(optional = nullable)]
+    pub environments: Option<Vec<TurnEnvironmentParams>>,
     #[experimental(nested)]
     #[ts(optional = nullable)]
     pub approval_policy: Option<AskForApproval>,
@@ -635,6 +641,12 @@ pub struct ThreadForkParams {
     #[schemars(with = "Option<Vec<codex_utils_absolute_path::AbsolutePathBuf>>")]
     #[ts(as = "Option<Vec<codex_utils_absolute_path::AbsolutePathBuf>>")]
     pub runtime_workspace_roots: Option<Vec<LegacyAppPathString>>,
+    // codeks 0039: select environments before ordinary fork startup work.
+    /// Environments for the fork; omission preserves default selection and an empty list disables access.
+    /// Cannot be combined with `experimentalPredictionMode`.
+    #[experimental("thread/fork.environments")]
+    #[ts(optional = nullable)]
+    pub environments: Option<Vec<TurnEnvironmentParams>>,
     #[experimental(nested)]
     #[ts(optional = nullable)]
     pub approval_policy: Option<AskForApproval>,
