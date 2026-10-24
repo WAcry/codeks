@@ -45,7 +45,8 @@ use crate::combined_auth::compose_auth;
 const MODELS_REFRESH_TIMEOUT: Duration = Duration::from_secs(5);
 const MODELS_ENDPOINT: &str = "/models";
 // Bound downloads from explicitly configured catalogs before decoding or caching them.
-const MAX_MODEL_CATALOG_BYTES: usize = 1024 * 1024;
+// codeks 0012: allow complete catalogs with multiple model and context presets.
+const MAX_MODEL_CATALOG_BYTES: usize = 32 * 1024 * 1024;
 
 /// Provider-owned OpenAI-compatible `/models` endpoint.
 #[derive(Debug)]
@@ -415,6 +416,11 @@ impl RequestTelemetry for ModelsRequestTelemetry {
 #[cfg(test)]
 #[path = "models_endpoint_timeout_tests.rs"]
 mod timeout_tests;
+
+// codeks 0012: exercise catalogs beyond the upstream download limit.
+#[cfg(test)]
+#[path = "models_endpoint_catalog_size_tests.rs"]
+mod catalog_size_tests;
 
 #[cfg(test)]
 #[path = "models_originator_tests.rs"]
