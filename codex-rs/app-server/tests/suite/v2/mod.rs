@@ -164,6 +164,7 @@ mod thread_memory_mode_set;
 mod thread_metadata_update;
 mod thread_name_persistence;
 mod thread_name_websocket;
+mod thread_provider_defaults; // codeks 0013: retain per-thread routes when defaults change.
 mod thread_queue;
 mod thread_read;
 mod thread_read_state;

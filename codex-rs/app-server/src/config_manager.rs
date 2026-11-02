@@ -430,24 +430,15 @@ impl ConfigManager {
         Ok(CloudStartupConfig { bootstrap, config })
     }
 
-    /// Admits resumed threads and input only on the currently selected provider.
+    /// Checks provider requirements and current configuration before accepting input.
     pub(crate) async fn check_thread_model_provider_for_input(
         &self,
         current: &Config,
     ) -> std::io::Result<()> {
+        // codeks 0013: changing the default provider does not invalidate an existing session route.
         self.check_thread_model_provider(current).await?;
-        let configured = self
-            .load_latest_config(Some(current.cwd.to_path_buf()))
+        self.load_latest_config(Some(current.cwd.to_path_buf()))
             .await?;
-        if current.model_provider_id != configured.model_provider_id {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                ModelProviderError::ModelProviderMismatch {
-                    model_provider: current.model_provider_id.clone(),
-                    current_model_provider: configured.model_provider_id,
-                },
-            ));
-        }
         Ok(())
     }
 
@@ -550,11 +541,11 @@ impl ConfigManager {
                 .and_then(serde_json::Value::as_str)
                 .map(str::to_owned)
         });
-        // Resolve the selection before the saved provider is applied as a resume override.
-        let current_provider = self
+        // codeks 0013: retain configuration validation and loader ordering without pinning its provider.
+        let current_config_validation = self
             .load_latest_config(typesafe_overrides.cwd.clone().or_else(|| cwd.clone()))
             .await
-            .map(|config| config.model_provider_id);
+            .map(|_| ());
         self.load_with_validation(
             &self.current_cli_overrides(),
             request_overrides,
@@ -593,21 +584,8 @@ impl ConfigManager {
                         ));
                     }
                 }
-                let current_provider = current_provider?;
-                for provider in [
-                    saved_provider.unwrap_or(requested_provider),
-                    requested_provider,
-                ] {
-                    if provider != current_provider {
-                        return Err(std::io::Error::new(
-                            std::io::ErrorKind::InvalidInput,
-                            ModelProviderError::ModelProviderMismatch {
-                                model_provider: provider.to_owned(),
-                                current_model_provider: current_provider,
-                            },
-                        ));
-                    }
-                }
+                // codeks 0013: saved/requested routes still need definitions and policy approval above.
+                current_config_validation?;
                 Ok(())
             },
         )
