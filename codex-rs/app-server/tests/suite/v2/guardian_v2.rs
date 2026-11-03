@@ -53,6 +53,7 @@ use codex_features::Feature;
 use codex_state::StateRuntime;
 use codex_utils_absolute_path::test_support::PathExt;
 use core_test_support::load_default_config_for_test;
+use core_test_support::prepared_image_data_url;
 use core_test_support::responses;
 use core_test_support::responses::WebSocketConnectionConfig;
 use core_test_support::skip_if_no_network;
@@ -1424,7 +1425,15 @@ async fn guardian_v2_routes_scoped_tool_approvals(
                         })
                 })
                 .collect::<Vec<_>>();
-            assert_eq!(images, vec![json!(["user", EVIDENCE_IMAGE, null])],);
+            // codeks 0014: compare prepared evidence while preserving its role and detail.
+            assert_eq!(
+                images,
+                vec![json!([
+                    "user",
+                    prepared_image_data_url(EVIDENCE_IMAGE, None).await?,
+                    null
+                ])],
+            );
         }
         let reviews = sync_review_fragments(&second_sample);
         if lifecycle.has_user_answer() {
