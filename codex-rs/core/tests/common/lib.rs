@@ -125,6 +125,34 @@ pub fn test_absolute_path(unix_path: &str) -> AbsolutePathBuf {
     test_absolute_path_with_windows(unix_path, /*windows_path*/ None)
 }
 
+// codeks 0014: prepare image fixtures on a blocking task through the protocol snapshot path.
+pub async fn prepared_image_data_url(
+    image_url: &str,
+    detail: Option<codex_protocol::models::ImageDetail>,
+) -> anyhow::Result<String> {
+    let image_url = image_url.to_owned();
+    tokio::task::spawn_blocking(move || -> anyhow::Result<String> {
+        let (_, encoded) = image_url
+            .split_once(',')
+            .ok_or_else(|| anyhow::anyhow!("expected inline image fixture"))?;
+        let bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, encoded)?;
+        let image_dir = tempfile::tempdir()?;
+        let path = image_dir.path().join("fixture.png");
+        std::fs::write(&path, bytes)?;
+        let mut input = codex_protocol::user_input::UserInput::LocalImage { path, detail };
+        codex_protocol::local_media::snapshot_local_user_input(&mut input)?;
+        let codex_protocol::user_input::UserInput::Image {
+            image: codex_protocol::models::ImageReference::Inline { image_url },
+            ..
+        } = input
+        else {
+            anyhow::bail!("expected prepared inline image fixture");
+        };
+        Ok(image_url)
+    })
+    .await?
+}
+
 #[cfg(unix)]
 #[allow(clippy::expect_used)]
 pub fn create_directory_symlink(source: &Path, link: &Path) {

@@ -15,6 +15,8 @@ use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::ThreadSettingsOverrides;
 use codex_protocol::protocol::TruncationPolicy;
 use codex_protocol::user_input::UserInput;
+use codex_utils_image::PromptImageMode;
+use codex_utils_image::load_data_url_for_prompt;
 use core_test_support::TempDirExt;
 use core_test_support::assert_regex_match;
 use core_test_support::responses;
@@ -498,6 +500,9 @@ async fn mcp_image_output_preserves_image_and_no_text_summary() -> Result<()> {
 
     // 1x1 PNG data URL
     let openai_png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==";
+    // codeks 0014: image preparation may replace PNG bytes without adding text output.
+    let prepared_image_url =
+        load_data_url_for_prompt(openai_png, PromptImageMode::HIGH_DETAIL)?.into_data_url();
 
     let mut builder = test_codex().with_config(move |config| {
         let mut servers = config.mcp_servers.get().clone();
@@ -585,7 +590,7 @@ async fn mcp_image_output_preserves_image_and_no_text_summary() -> Result<()> {
     );
     assert_eq!(
         arr[1],
-        json!({"type": "input_image", "image_url": openai_png, "detail": "high"})
+        json!({"type": "input_image", "image_url": prepared_image_url, "detail": "high"})
     );
 
     Ok(())

@@ -51,6 +51,8 @@ use codex_protocol::protocol::AskForApproval;
 use codex_protocol::request_permissions::PermissionGrantScope;
 use codex_protocol::request_permissions::RequestPermissionProfile;
 use codex_protocol::request_permissions::RequestPermissionsResponse;
+use codex_utils_image::PromptImageMode;
+use codex_utils_image::load_data_url_for_prompt;
 use core_test_support::PathExt;
 use core_test_support::TempDirExt;
 use core_test_support::codex_linux_sandbox_exe_or_skip;
@@ -315,8 +317,15 @@ async fn request_permissions_routes_to_guardian_when_reviewer_is_enabled() {
     assert_eq!(guardian_requests.len(), 2);
     let guardian_request = &guardian_requests[0];
     assert_eq!(guardian_request.path(), "/v1/responses");
+    // codeks 0014: preserve evidence while allowing the shared PNG representation to change.
+    let expected_image_url = load_data_url_for_prompt(image_url, PromptImageMode::HIGH_DETAIL)
+        .expect("prepare Guardian evidence image")
+        .into_data_url();
     for request in &guardian_requests {
-        assert_eq!(request.message_input_image_urls("user"), [image_url]);
+        assert_eq!(
+            request.message_input_image_urls("user"),
+            [expected_image_url.as_str()]
+        );
     }
     assert!(guardian_request.body_contains_text("request_permissions"));
     assert!(guardian_request.body_contains_text("need network"));

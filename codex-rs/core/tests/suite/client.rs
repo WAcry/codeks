@@ -61,6 +61,8 @@ use codex_protocol::protocol::SessionMetaLine;
 use codex_protocol::protocol::SessionSource;
 use codex_protocol::protocol::ThreadSettingsOverrides;
 use codex_protocol::user_input::UserInput;
+use codex_utils_image::PromptImageMode;
+use codex_utils_image::load_data_url_for_prompt;
 use core_test_support::TestCodexResponsesRequestKind;
 use core_test_support::apps_test_server::AppsTestServer;
 use core_test_support::load_default_config_for_test;
@@ -1240,6 +1242,11 @@ async fn resume_replays_legacy_js_repl_image_rollout_shapes() {
         internal_chat_message_metadata_passthrough: None,
     };
     let legacy_image_url = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==";
+    // codeks 0014: replay retains image pixels through the shared format selection.
+    let prepared_image_url =
+        load_data_url_for_prompt(legacy_image_url, PromptImageMode::HIGH_DETAIL)
+            .expect("prepare legacy image")
+            .into_data_url();
     let thread_id = ThreadId::default();
     let rollout = vec![
         RolloutLine {
@@ -1349,7 +1356,7 @@ async fn resume_replays_legacy_js_repl_image_rollout_shapes() {
                             entry.get("type").and_then(|value| value.as_str())
                                 == Some("input_image")
                                 && entry.get("image_url").and_then(|value| value.as_str())
-                                    == Some(legacy_image_url)
+                                    == Some(prepared_image_url.as_str())
                         })
                     })
         })
@@ -1382,6 +1389,10 @@ async fn resume_replays_image_tool_outputs_with_detail() {
     skip_if_no_network!();
 
     let image_url = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==";
+    // codeks 0014: compare prepared output while preserving original-detail metadata.
+    let prepared_image_url = load_data_url_for_prompt(image_url, PromptImageMode::ORIGINAL_DETAIL)
+        .expect("prepare tool image")
+        .into_data_url();
     let function_call_id = "view-image-call";
     let custom_call_id = "js-repl-call";
     let thread_id = ThreadId::default();
@@ -1504,7 +1515,7 @@ async fn resume_replays_image_tool_outputs_with_detail() {
         Some(&serde_json::json!([
             {
                 "type": "input_image",
-                "image_url": image_url,
+                "image_url": prepared_image_url,
                 "detail": "original"
             }
         ]))
@@ -1518,7 +1529,7 @@ async fn resume_replays_image_tool_outputs_with_detail() {
         Some(&serde_json::json!([
             {
                 "type": "input_image",
-                "image_url": image_url,
+                "image_url": prepared_image_url,
                 "detail": "original"
             }
         ]))

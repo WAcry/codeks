@@ -33,6 +33,7 @@ use codex_protocol::models::FunctionCallOutputPayload;
 use codex_protocol::models::ImageReference;
 use codex_protocol::openai_models::InputModality;
 use core_test_support::load_default_config_for_test;
+use core_test_support::prepared_image_data_url;
 use core_test_support::responses;
 use pretty_assertions::assert_eq;
 use serde_json::Value;
@@ -711,13 +712,16 @@ async fn dynamic_tool_call_round_trip_handles_content_items() -> Result<()> {
             audio_url: INLINE_AUDIO_DATA_URL.to_string(),
         },
     ];
+    // codeks 0014: model output uses the prepared image; raw item events keep the source.
+    let prepared_image_url =
+        prepared_image_data_url(TINY_PNG_DATA_URL, Some(DEFAULT_IMAGE_DETAIL)).await?;
     let model_content_items = vec![
         FunctionCallOutputContentItem::InputText {
             text: "dynamic-ok".to_string(),
         },
         FunctionCallOutputContentItem::InputImage {
             image: ImageReference::Inline {
-                image_url: TINY_PNG_DATA_URL.to_string(),
+                image_url: prepared_image_url.clone(),
             },
             detail: Some(DEFAULT_IMAGE_DETAIL),
         },
@@ -781,7 +785,7 @@ async fn dynamic_tool_call_round_trip_handles_content_items() -> Result<()> {
             },
             {
                 "type": "input_image",
-                "image_url": TINY_PNG_DATA_URL,
+                "image_url": prepared_image_url,
                 "detail": "high"
             },
             {

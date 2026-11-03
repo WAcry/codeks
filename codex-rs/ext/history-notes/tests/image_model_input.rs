@@ -10,6 +10,9 @@ use codex_history_notes_extension::install;
 use codex_login::AuthHeaders;
 use codex_login::AuthManager;
 use codex_login::CodexAuth;
+use codex_protocol::local_media::snapshot_local_user_input;
+use codex_protocol::models::ImageReference;
+use codex_protocol::user_input::UserInput;
 use core_test_support::context_snapshot;
 use core_test_support::context_snapshot::ContextSnapshotOptions;
 use core_test_support::responses;
@@ -24,6 +27,12 @@ use wiremock::matchers::path;
 
 const PNG: &str =
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=";
+// codeks 0014: the same source PNG bytes used to prepare the expected attachment.
+const PNG_BYTES: &[u8] = &[
+    137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0,
+    0, 0, 31, 21, 196, 137, 0, 0, 0, 11, 73, 68, 65, 84, 120, 156, 99, 96, 0, 2, 0, 0, 5, 0, 1,
+    122, 94, 171, 63, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130,
+];
 
 const NATIVE_TOOLS: [(&str, &str, &[&str]); 2] = [
     (
@@ -46,6 +55,22 @@ const NATIVE_TOOLS: [(&str, &str, &[&str]); 2] = [
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn history_images_reach_the_next_model_request() -> Result<(), Box<dyn std::error::Error>> {
+    // codeks 0014: compare prepared images while keeping the mocked source PNG unchanged.
+    let image_dir = tempfile::tempdir()?;
+    let image_path = image_dir.path().join("history.png");
+    std::fs::write(&image_path, PNG_BYTES)?;
+    let mut expected_image = UserInput::LocalImage {
+        path: image_path,
+        detail: None,
+    };
+    snapshot_local_user_input(&mut expected_image)?;
+    let UserInput::Image {
+        image: ImageReference::Inline { image_url },
+        ..
+    } = expected_image
+    else {
+        panic!("expected a snapshotted inline image");
+    };
     let server = responses::start_mock_server().await;
     Mock::given(method("POST"))
         .and(path("/v1/alpha/history/v2/read_item"))
@@ -159,9 +184,9 @@ async fn history_images_reach_the_next_model_request() -> Result<(), Box<dyn std
         requests[1].function_call_output("read-history")["output"],
         json!([
                 {"type": "encrypted_content", "encrypted_content": "opaque-history-text"},
-                {"type": "input_image", "image_url": format!("data:image/png;base64,{PNG}"), "detail": "original"},
-                {"type": "input_image", "image_url": format!("data:image/png;base64,{PNG}"), "detail": "high"},
-                {"type": "input_image", "image_url": format!("data:image/png;base64,{PNG}"), "detail": "auto"}
+                {"type": "input_image", "image_url": image_url, "detail": "original"},
+                {"type": "input_image", "image_url": image_url, "detail": "high"},
+                {"type": "input_image", "image_url": image_url, "detail": "auto"}
         ])
     );
     insta::assert_snapshot!(context_snapshot::format_request_history_snapshot(
