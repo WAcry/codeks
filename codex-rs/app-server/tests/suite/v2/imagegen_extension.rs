@@ -27,7 +27,9 @@ use codex_app_server_protocol::TurnStartResponse;
 use codex_app_server_protocol::UserInput as V2UserInput;
 use codex_config::types::AuthCredentialsStoreMode;
 use codex_features::Feature;
+use codex_protocol::models::ImageDetail;
 use codex_utils_absolute_path::AbsolutePathBuf;
+use core_test_support::prepared_image_data_url;
 use core_test_support::responses;
 use core_test_support::skip_if_remote;
 use pretty_assertions::assert_eq;
@@ -262,7 +264,11 @@ async fn standalone_image_generation_returns_saved_path_hint_to_model(
             output["output"][0],
             json!({
                 "type": "input_image",
-                "image_url": format!("data:image/png;base64,{RESULT}"),
+                // codeks 0014: generated PNG output reaches the model through image preparation.
+                "image_url": prepared_image_data_url(
+                    &format!("data:image/png;base64,{RESULT}"),
+                    Some(ImageDetail::High),
+                ).await?,
                 "detail": "high",
             })
         );
@@ -887,11 +893,14 @@ async fn standalone_image_edit_uses_attached_model_visible_image(
         ))
     })
     .await?;
+    // codeks 0014: the edit request uses the prepared representation, not the saved PNG bytes.
+    let prepared_input_image =
+        prepared_image_data_url(TINY_PNG_DATA_URL, Some(ImageDetail::High)).await?;
     assert_eq!(
         edit_request,
         json!({
             "prompt": "add a red hat",
-            "images": [{"image_url": TINY_PNG_DATA_URL}],
+            "images": [{"image_url": prepared_input_image}],
             "background": expected_background,
             "model": "gpt-image-2",
             "quality": "auto",
@@ -939,11 +948,13 @@ async fn transparent_image_edit_preserves_metadata_and_recent_pathless_image(
         ))
     })
     .await?;
+    // codeks 0014: recent images use the same shared preparation as local file attachments.
+    let prepared_input_image = prepared_image_data_url(image_url, Some(ImageDetail::High)).await?;
     assert_eq!(
         edit_request,
         json!({
             "prompt": "add a red hat",
-            "images": [{"image_url": image_url}],
+            "images": [{"image_url": prepared_input_image}],
             "background": expected_background,
             "model": "gpt-image-2",
             "quality": "auto",
@@ -1075,7 +1086,11 @@ generatedImage(result);
         output["output"][1],
         json!({
             "type": "input_image",
-            "image_url": format!("data:image/png;base64,{RESULT}"),
+            // codeks 0014: generated PNG bytes are prepared before reentering model context.
+            "image_url": prepared_image_data_url(
+                &format!("data:image/png;base64,{RESULT}"),
+                Some(ImageDetail::High),
+            ).await?,
             "detail": "high",
         })
     );
@@ -1236,11 +1251,14 @@ generatedImage(result);
         .find(|request| request.url.path() == "/api/codex/images/edits")
         .context("image edit request should be sent")?;
     // Empty GIF options leave frame count and duration to the Images API defaults.
+    // codeks 0014: animation still consumes the prepared input image.
+    let prepared_input_image =
+        prepared_image_data_url(TINY_PNG_DATA_URL, Some(ImageDetail::High)).await?;
     assert_eq!(
         image_request.body_json::<serde_json::Value>()?,
         json!({
             "prompt": "animate the attached image",
-            "images": [{"image_url": TINY_PNG_DATA_URL}],
+            "images": [{"image_url": prepared_input_image}],
             "output_format": "gif",
             "background": "opaque",
             "model": "gpt-image-2",
