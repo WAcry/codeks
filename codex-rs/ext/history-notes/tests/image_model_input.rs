@@ -10,8 +10,10 @@ use codex_history_notes_extension::install;
 use codex_login::AuthHeaders;
 use codex_login::AuthManager;
 use codex_login::CodexAuth;
+use codex_protocol::models::ImageDetail;
 use core_test_support::context_snapshot;
 use core_test_support::context_snapshot::ContextSnapshotOptions;
+use core_test_support::prepared_image_data_url;
 use core_test_support::responses;
 use core_test_support::test_codex::test_codex;
 use http::HeaderMap;
@@ -155,13 +157,16 @@ async fn history_images_reach_the_next_model_request() -> Result<(), Box<dyn std
             }
         }
     }
+    // codeks 0014: compare prepared bytes while preserving unified-budget detail.
+    let source_image_url = format!("data:image/png;base64,{PNG}");
+    let image_url = prepared_image_data_url(&source_image_url, Some(ImageDetail::Original)).await?;
     assert_eq!(
         requests[1].function_call_output("read-history")["output"],
         json!([
                 {"type": "encrypted_content", "encrypted_content": "opaque-history-text"},
-                {"type": "input_image", "image_url": format!("data:image/png;base64,{PNG}"), "detail": "original"},
-                {"type": "input_image", "image_url": format!("data:image/png;base64,{PNG}"), "detail": "original"},
-                {"type": "input_image", "image_url": format!("data:image/png;base64,{PNG}"), "detail": "original"}
+                {"type": "input_image", "image_url": image_url, "detail": "original"},
+                {"type": "input_image", "image_url": image_url, "detail": "original"},
+                {"type": "input_image", "image_url": image_url, "detail": "original"}
         ])
     );
     insta::assert_snapshot!(context_snapshot::format_request_history_snapshot(

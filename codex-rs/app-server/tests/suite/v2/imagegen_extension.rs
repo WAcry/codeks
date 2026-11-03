@@ -27,7 +27,9 @@ use codex_app_server_protocol::TurnStartResponse;
 use codex_app_server_protocol::UserInput as V2UserInput;
 use codex_config::types::AuthCredentialsStoreMode;
 use codex_features::Feature;
+use codex_protocol::models::ImageDetail;
 use codex_utils_absolute_path::AbsolutePathBuf;
+use core_test_support::prepared_image_data_url;
 use core_test_support::responses;
 use core_test_support::skip_if_remote;
 use pretty_assertions::assert_eq;
@@ -262,7 +264,11 @@ async fn standalone_image_generation_returns_saved_path_hint_to_model(
             output["output"][0],
             json!({
                 "type": "input_image",
-                "image_url": format!("data:image/png;base64,{RESULT}"),
+                // codeks 0014: generated PNG output reaches the model through image preparation.
+                "image_url": prepared_image_data_url(
+                    &format!("data:image/png;base64,{RESULT}"),
+                    Some(ImageDetail::High),
+                ).await?,
                 "detail": "high",
             })
         );

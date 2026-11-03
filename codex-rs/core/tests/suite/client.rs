@@ -63,6 +63,8 @@ use codex_protocol::protocol::SessionSource;
 use codex_protocol::protocol::ThreadSettingsOverrides;
 use codex_protocol::user_input::UserInput;
 use codex_protocol_test_support::uuid_v7_item_id_generator_for_test;
+use codex_utils_image::PromptImageMode;
+use codex_utils_image::load_data_url_for_prompt;
 use core_test_support::TestCodexResponsesRequestKind;
 use core_test_support::apps_test_server::AppsTestServer;
 use core_test_support::load_default_config_for_test;
@@ -1430,6 +1432,11 @@ async fn resume_replays_legacy_js_repl_image_rollout_shapes() {
         Some("legacy js_repl stdout")
     );
 
+    // codeks 0014: replay preserves the legacy item, but the model receives prepared image bytes.
+    let prepared_image_url =
+        load_data_url_for_prompt(legacy_image_url, PromptImageMode::ORIGINAL_DETAIL)
+            .unwrap()
+            .into_data_url();
     let legacy_image_index = input
         .iter()
         .position(|item| {
@@ -1443,7 +1450,7 @@ async fn resume_replays_legacy_js_repl_image_rollout_shapes() {
                             entry.get("type").and_then(|value| value.as_str())
                                 == Some("input_image")
                                 && entry.get("image_url").and_then(|value| value.as_str())
-                                    == Some(legacy_image_url)
+                                    == Some(prepared_image_url.as_str())
                         })
                     })
         })
@@ -1590,6 +1597,10 @@ async fn resume_replays_image_tool_outputs_with_detail() {
         .expect("resume conversation");
     test.submit_turn("after resume").await.unwrap();
 
+    // codeks 0014: original detail survives while the image payload uses the shared encoder.
+    let prepared_image_url = load_data_url_for_prompt(image_url, PromptImageMode::ORIGINAL_DETAIL)
+        .unwrap()
+        .into_data_url();
     let function_output = resp_mock
         .single_request()
         .function_call_output(function_call_id);
@@ -1598,7 +1609,7 @@ async fn resume_replays_image_tool_outputs_with_detail() {
         Some(&serde_json::json!([
             {
                 "type": "input_image",
-                "image_url": image_url,
+                "image_url": prepared_image_url,
                 "detail": "original"
             }
         ]))
@@ -1612,7 +1623,7 @@ async fn resume_replays_image_tool_outputs_with_detail() {
         Some(&serde_json::json!([
             {
                 "type": "input_image",
-                "image_url": image_url,
+                "image_url": prepared_image_url,
                 "detail": "original"
             }
         ]))
