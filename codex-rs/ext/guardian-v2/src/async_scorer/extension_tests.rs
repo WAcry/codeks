@@ -2238,12 +2238,17 @@ enabled = true
         .as_array()
         .expect("Luna user content should be an array");
 
+    // codeks 0040: transcript images retain their content through shared preparation.
+    let prepared_user_image =
+        core_test_support::prepared_image_data_url(user_image, Some(ImageDetail::High)).await?;
+    let prepared_tool_image =
+        core_test_support::prepared_image_data_url(tool_image, Some(ImageDetail::High)).await?;
     assert_eq!(
         content[content.len() - 4..],
         [
             json!({
                 "type": "input_image",
-                "image_url": user_image,
+                "image_url": prepared_user_image,
             }),
             json!({
                 "type": "input_image",
@@ -2251,7 +2256,7 @@ enabled = true
             }),
             json!({
                 "type": "input_image",
-                "image_url": tool_image,
+                "image_url": prepared_tool_image,
             }),
             json!({
                 "type": "input_image",

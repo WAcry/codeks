@@ -16,6 +16,13 @@ fn snapshots_local_image_user_input_with_requested_detail() -> Result<()> {
     let temp_dir = tempdir()?;
     let image_path = temp_dir.path().join("sample.png");
     std::fs::write(&image_path, TINY_PNG_BYTES)?;
+    // codeks 0040: compare the selected representation while preserving requested detail.
+    let expected_image_url = load_for_prompt_bytes(
+        &image_path,
+        TINY_PNG_BYTES.to_vec(),
+        PromptImageMode::Original,
+    )?
+    .into_data_url();
 
     for detail in [
         None,
@@ -34,8 +41,7 @@ fn snapshots_local_image_user_input_with_requested_detail() -> Result<()> {
         assert_eq!(
             UserInput::Image {
                 image: codex_protocol::models::ImageReference::Inline {
-                    image_url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII="
-                        .to_string(),
+                    image_url: expected_image_url.clone(),
                 },
                 detail,
             },
