@@ -71,7 +71,7 @@ fn decoded_image(image_url: &str) -> (Vec<u8>, DynamicImage) {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn preparation_preserves_small_image_bytes_and_replaces_remote_urls() {
+async fn preparation_preserves_small_image_pixels_and_replaces_remote_urls() {
     let (data_url, original_bytes) = png_data_url(/*width*/ 64, /*height*/ 32);
     let mut items = vec![ResponseItem::Message {
         status: None,
@@ -133,7 +133,13 @@ async fn preparation_preserves_small_image_bytes_and_replaces_remote_urls() {
     else {
         panic!("expected two images");
     };
-    assert_eq!(decoded_image(image_url).0, original_bytes);
+    // codeks 0014: lossless format conversion may replace the original PNG bytes.
+    let (prepared_bytes, prepared_image) = decoded_image(image_url);
+    assert!(prepared_bytes.len() <= original_bytes.len());
+    assert_eq!(
+        prepared_image.to_rgba8(),
+        image::load_from_memory(&original_bytes).unwrap().to_rgba8()
+    );
     assert_eq!(text, REMOTE_IMAGE_URL_PLACEHOLDER);
     assert_eq!(
         &items[1],
@@ -558,7 +564,11 @@ async fn resize_notices_count_file_backed_images_and_skip_failed_images() {
 #[tokio::test(flavor = "multi_thread")]
 async fn preparation_replaces_only_failed_tool_images_and_preserves_metadata() {
     let (valid_image_url, _) = png_data_url(/*width*/ 64, /*height*/ 32);
-    let expected_valid_image_url = valid_image_url.clone();
+    // codeks 0014: compare tool metadata after shared image preparation.
+    let expected_valid_image_url =
+        load_data_url_for_prompt(&valid_image_url, PromptImageMode::HIGH_DETAIL)
+            .expect("prepare expected image")
+            .into_data_url();
     let mut items = vec![ResponseItem::CustomToolCallOutput {
         id: None,
         call_id: "call-1".to_string(),
