@@ -18,6 +18,7 @@ use codex_core::config::ConfigOverrides;
 pub use codex_core::test_support::TestCodexResponsesRequestKind;
 pub use codex_core::test_support::responses_metadata;
 use codex_features::Feature;
+use codex_protocol::models;
 use codex_utils_absolute_path::AbsolutePathBuf;
 pub use codex_utils_absolute_path::test_support::PathBufExt;
 pub use codex_utils_absolute_path::test_support::PathExt;
@@ -128,6 +129,34 @@ pub fn test_absolute_path_with_windows(
 
 pub fn test_absolute_path(unix_path: &str) -> AbsolutePathBuf {
     test_absolute_path_with_windows(unix_path, /*windows_path*/ None)
+}
+
+// codeks 0040: run the shared image encoder outside the async runtime.
+pub async fn prepared_image_data_url(
+    image_url: &str,
+    detail: Option<models::ImageDetail>,
+) -> anyhow::Result<String> {
+    let (_, encoded) = image_url
+        .split_once(',')
+        .ok_or_else(|| anyhow::anyhow!("expected inline image fixture"))?;
+    let bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, encoded)?;
+    tokio::task::spawn_blocking(move || {
+        let mut items = models::local_image_content_items_with_label_number(
+            Path::new("fixture.png"),
+            bytes,
+            /*label_number*/ None,
+            detail.unwrap_or(models::DEFAULT_IMAGE_DETAIL),
+        );
+        match items.pop() {
+            Some(models::ContentItem::InputImage {
+                image: models::ImageReference::Inline { image_url },
+                ..
+            }) => Ok(image_url),
+            Some(models::ContentItem::InputText { text }) => anyhow::bail!("{text}"),
+            _ => anyhow::bail!("expected prepared inline image fixture"),
+        }
+    })
+    .await?
 }
 
 #[cfg(unix)]

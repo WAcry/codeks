@@ -82,6 +82,9 @@ use codex_tools::ToolName;
 use codex_tools::ToolOutput;
 use codex_tools::ToolPayload;
 use codex_tools::ToolSpec;
+use codex_utils_image::PromptImageDecoder;
+use codex_utils_image::PromptImageMode;
+use codex_utils_image::load_data_url_for_prompt;
 use codex_web_search_extension::install as install_web_search_extension;
 use core_test_support::apps_test_server::AppsTestServer;
 use core_test_support::apps_test_server::AppsTestToolLoading;
@@ -7337,7 +7340,14 @@ image(imageItem);
         .get("image_url")
         .and_then(Value::as_str)
         .expect("image helper should emit an input_image item with image_url");
-    assert!(emitted_image_url.starts_with("data:image/png;base64,"));
+    // codeks 0040: verify the MCP image pixels after lossless format selection.
+    let (_, payload) = emitted_image_url
+        .split_once(',')
+        .expect("emitted image should contain a data URL prefix");
+    assert_eq!(
+        image::load_from_memory(&BASE64_STANDARD.decode(payload)?)?.to_rgba8(),
+        ImageBuffer::from_pixel(1, 1, Rgba([255u8, 0, 0, 255]))
+    );
     assert_eq!(
         items[1].get("detail").and_then(Value::as_str),
         Some("original")
@@ -7532,7 +7542,8 @@ async fn code_mode_node_repl_screenshots_can_be_captured_without_guardian_transc
         .requests()
         .pop()
         .expect("parent turn should complete");
-    assert!(!serde_json::to_string(&parent_request.input())?.contains(SCREENSHOT));
+    // codeks 0040: private evidence must stay hidden in every image encoding.
+    assert!(!serde_json::to_string(&parent_request.input())?.contains("data:image/"));
 
     Ok(())
 }
@@ -7628,7 +7639,8 @@ await tools.exec_command({ cmd: "true", sandbox_permissions: "require_escalated"
     for marker in [
         "guardian-visible-before-image",
         "guardian-visible-after-image",
-        "data:image/png;base64,",
+        // codeks 0040: private evidence must stay hidden in every image encoding.
+        "data:image/",
     ] {
         assert!(!guardian_text.contains(marker));
         assert!(!parent_input.contains(marker));
@@ -7891,10 +7903,17 @@ await tools.exec_command({ cmd: "printf second", sandbox_permissions: "require_e
     }
     let guardian_request = guardian_requests[0];
     let reviewer_image_urls = guardian_request.message_input_image_urls("user");
+    // codeks 0040: Guardian receives the shared prepared representation of the source PNG.
+    let prepared_private_image = load_data_url_for_prompt(
+        PRIVATE_IMAGE,
+        PromptImageMode::HIGH_DETAIL,
+        PromptImageDecoder::Legacy,
+    )?
+    .into_data_url();
     let expected_images = usize::from(reviewer_images) + usize::from(check_detail);
     assert_eq!(reviewer_image_urls.len(), expected_images);
     if reviewer_images {
-        assert_eq!(reviewer_image_urls[0], PRIVATE_IMAGE);
+        assert_eq!(reviewer_image_urls[0], prepared_private_image);
         let reviewer_user_content = guardian_request
             .inputs_of_type("message")
             .into_iter()
@@ -7904,7 +7923,10 @@ await tools.exec_command({ cmd: "printf second", sandbox_permissions: "require_e
             .collect::<Vec<_>>();
         let image_index = reviewer_user_content
             .iter()
-            .position(|item| item.get("image_url").and_then(Value::as_str) == Some(PRIVATE_IMAGE))
+            .position(|item| {
+                item.get("image_url").and_then(Value::as_str)
+                    == Some(prepared_private_image.as_str())
+            })
             .expect("private reviewer image should be present");
         if check_detail {
             assert_eq!(reviewer_user_content[image_index]["detail"], "original");
@@ -7943,7 +7965,7 @@ await tools.exec_command({ cmd: "printf second", sandbox_permissions: "require_e
     assert_eq!(
         guardian_requests[1].message_input_image_urls("user"),
         if reviewer_constraint == Some("large_prompt") {
-            vec![PRIVATE_IMAGE.to_string()]
+            vec![prepared_private_image]
         } else {
             reviewer_image_urls
         }
@@ -7971,7 +7993,8 @@ await tools.exec_command({ cmd: "printf second", sandbox_permissions: "require_e
     }
     let parent_request = requests.last().expect("parent turn should complete");
     let parent_input = serde_json::to_string(&parent_request.input())?;
-    assert!(!parent_input.contains("data:image/png;base64,"));
+    // codeks 0040: private evidence must stay hidden in every image encoding.
+    assert!(!parent_input.contains("data:image/"));
     assert!(!parent_input.contains("guardian-visible-before-image"));
     assert!(!parent_input.contains("guardian-visible-after-image"));
     assert!(
