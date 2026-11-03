@@ -16,6 +16,8 @@ use image::ImageEncoder;
 use image::ImageFormat;
 use image::ImageReader;
 use image::codecs::jpeg::JpegEncoder;
+use image::codecs::png::CompressionType;
+use image::codecs::png::FilterType as PngFilterType;
 use image::codecs::png::PngEncoder;
 use image::codecs::webp::WebPEncoder;
 use image::imageops::FilterType;
@@ -377,7 +379,12 @@ fn encode_image(
     match target_format {
         ImageFormat::Png => {
             let rgba = image.to_rgba8();
-            let mut encoder = PngEncoder::new(&mut buffer);
+            // codeks 0014: balanced lossless compression avoids unnecessarily large PNG payloads.
+            let mut encoder = PngEncoder::new_with_quality(
+                &mut buffer,
+                CompressionType::Default,
+                PngFilterType::Adaptive,
+            );
             apply_image_metadata(&mut encoder, icc_profile, exif, target_format)?;
             encoder
                 .write_image(
