@@ -12775,6 +12775,13 @@ async fn task_finish_emits_turn_item_lifecycle_for_leftover_pending_user_input()
         .write_to(&mut encoded, image::ImageFormat::Png)
         .expect("encode image");
     let image_url = codex_utils_image::data_url_from_bytes("image/png", &encoded.into_inner());
+    // codeks 0014: persisted input uses the current model's prepared image representation.
+    let prepared_image_url = codex_utils_image::load_data_url_for_prompt(
+        &image_url,
+        codex_utils_image::PromptImageMode::ORIGINAL_DETAIL,
+    )
+    .expect("prepare pending image")
+    .into_data_url();
     let text_element = codex_protocol::user_input::TextElement::new(
         codex_protocol::user_input::ByteRange { start: 5, end: 12 },
         Some("pending marker".to_string()),
@@ -12813,7 +12820,7 @@ async fn task_finish_emits_turn_item_lifecycle_for_leftover_pending_user_input()
             },
             ContentItem::InputImage {
                 image: ImageReference::Inline {
-                    image_url: image_url.clone(),
+                    image_url: prepared_image_url,
                 },
                 detail: Some(ImageDetail::Original),
             },

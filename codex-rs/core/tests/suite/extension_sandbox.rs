@@ -71,6 +71,16 @@ const TINY_PNG_BYTES: &[u8] = &[
 const TINY_PNG_BASE64: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==";
 const TINY_PNG_DATA_URL: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==";
 
+// codeks 0014: extension output uses the shared prepared image representation.
+fn prepared_tiny_image_url() -> String {
+    codex_utils_image::load_data_url_for_prompt(
+        TINY_PNG_DATA_URL,
+        codex_utils_image::PromptImageMode::HIGH_DETAIL,
+    )
+    .expect("prepare tiny image")
+    .into_data_url()
+}
+
 fn image_generation_extensions(
     auth: &CodexAuth,
     resolve_save_root: impl Fn(&Config) -> Option<AbsolutePathBuf> + Send + Sync + 'static,
@@ -505,7 +515,7 @@ async fn extension_tool_uses_granted_turn_permissions_without_host_local_persist
         output["output"][0],
         json!({
             "type": "input_image",
-            "image_url": TINY_PNG_DATA_URL,
+            "image_url": prepared_tiny_image_url(),
         })
     );
     assert_eq!(output["output"].as_array().map(Vec::len), Some(2));
@@ -723,7 +733,7 @@ async fn extension_tool_rebinds_granted_permissions_on_each_turn(
         output["output"][0],
         json!({
             "type": "input_image",
-            "image_url": TINY_PNG_DATA_URL,
+            "image_url": prepared_tiny_image_url(),
         })
     );
 
@@ -752,7 +762,7 @@ async fn extension_tool_rebinds_granted_permissions_on_each_turn(
                 output["output"][0],
                 json!({
                     "type": "input_image",
-                    "image_url": TINY_PNG_DATA_URL,
+                    "image_url": prepared_tiny_image_url(),
                 })
             );
             assert_eq!(

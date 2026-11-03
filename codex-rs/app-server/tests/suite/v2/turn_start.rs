@@ -94,6 +94,7 @@ use codex_utils_absolute_path::test_support::PathExt;
 use core_test_support::apps_test_server::AppsTestServer;
 use core_test_support::apps_test_server::SEARCH_CALENDAR_LIST_TOOL;
 use core_test_support::apps_test_server::SEARCH_CALENDAR_NAMESPACE;
+use core_test_support::prepared_image_data_url;
 use core_test_support::responses;
 use core_test_support::skip_if_no_network;
 use core_test_support::skip_if_remote;
@@ -341,12 +342,14 @@ async fn turn_start_omits_notification_media_without_changing_model_input() -> R
         ]
     );
 
+    // codeks 0014: the model receives the prepared inline image.
+    let prepared_image_url = prepared_image_data_url(TINY_PNG_DATA_URL, None).await?;
     let model_input_images = received_response_input_images(&server).await?;
     assert_eq!(model_input_images.len(), 2);
     assert!(
         model_input_images
             .iter()
-            .any(|image| image["image_url"] == TINY_PNG_DATA_URL)
+            .any(|image| image["image_url"] == prepared_image_url)
     );
     assert!(
         model_input_images

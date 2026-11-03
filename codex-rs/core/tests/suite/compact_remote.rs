@@ -699,19 +699,23 @@ async fn remote_compact_v2_charges_retained_images_to_token_budget(
                     detail: Some(codex_protocol::models::ImageDetail::Original),
                 });
             }
-            let image = image::ImageBuffer::from_pixel(
+            // codeks 0014: keep distinct original-size PNGs without WebP conversion or
+            // per-pixel construction and adaptive filtering in this token-budget test.
+            let image = image::ImageBuffer::<image::Luma<u16>, Vec<u16>>::from_raw(
                 /*width*/ 3200,
                 /*height*/ 3200,
-                image::Luma([number as u8]),
-            );
-            let mut bytes = std::io::Cursor::new(Vec::new());
-            image.write_to(&mut bytes, image::ImageFormat::Png)?;
+                vec![number as u16; 3200 * 3200],
+            )
+            .expect("image buffer has the expected dimensions");
+            let mut bytes = Vec::new();
+            image.write_with_encoder(image::codecs::png::PngEncoder::new_with_quality(
+                &mut bytes,
+                image::codecs::png::CompressionType::Fast,
+                image::codecs::png::FilterType::Sub,
+            ))?;
             Ok(UserInput::Image {
                 image: ImageReference::Inline {
-                    image_url: format!(
-                        "data:image/png;base64,{}",
-                        BASE64_STANDARD.encode(bytes.get_ref())
-                    ),
+                    image_url: format!("data:image/png;base64,{}", BASE64_STANDARD.encode(&bytes)),
                 },
                 detail: Some(codex_protocol::models::ImageDetail::Original),
             })

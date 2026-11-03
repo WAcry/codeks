@@ -62,7 +62,6 @@ const TINY_PNG_BYTES: &[u8] = &[
     0, 0, 31, 21, 196, 137, 0, 0, 0, 11, 73, 68, 65, 84, 120, 156, 99, 96, 0, 2, 0, 0, 5, 0, 1,
     122, 94, 171, 63, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130,
 ];
-const TINY_PNG_DATA_URL: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=";
 
 #[derive(Debug)]
 struct TestAdmission(AtomicBool);
@@ -836,6 +835,19 @@ async fn local_attachments_are_snapshotted_before_enqueue_and_update() -> anyhow
     let audio_path = home.path().join("queued.mp3");
     std::fs::write(&image_path, TINY_PNG_BYTES)?;
     std::fs::write(&audio_path, b"audio")?;
+    // codeks 0014: validate queue persistence against the shared image representation.
+    let mut expected_image = UserInput::LocalImage {
+        path: image_path.clone(),
+        detail: Some(ImageDetail::Original),
+    };
+    codex_protocol::local_media::snapshot_local_user_input(&mut expected_image)?;
+    let UserInput::Image {
+        image: ImageReference::Inline { image_url },
+        ..
+    } = expected_image
+    else {
+        panic!("expected a snapshotted inline image");
+    };
     let queued_input = user_input_with_media(
         "queued attachments",
         UserInput::LocalImage {
@@ -850,7 +862,7 @@ async fn local_attachments_are_snapshotted_before_enqueue_and_update() -> anyhow
         "queued attachments",
         UserInput::Image {
             image: ImageReference::Inline {
-                image_url: TINY_PNG_DATA_URL.to_string(),
+                image_url: image_url.clone(),
             },
             detail: Some(ImageDetail::Original),
         },
@@ -893,9 +905,7 @@ async fn local_attachments_are_snapshotted_before_enqueue_and_update() -> anyhow
     let expected_edited_input = user_input_with_media(
         "edited attachments",
         UserInput::Image {
-            image: ImageReference::Inline {
-                image_url: TINY_PNG_DATA_URL.to_string(),
-            },
+            image: ImageReference::Inline { image_url },
             detail: Some(ImageDetail::High),
         },
         UserInput::Audio {

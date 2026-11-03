@@ -26,7 +26,9 @@ use codex_app_server_protocol::TurnStartResponse;
 use codex_app_server_protocol::UserInput as V2UserInput;
 use codex_config::types::AuthCredentialsStoreMode;
 use codex_features::Feature;
+use codex_protocol::models::ImageDetail;
 use codex_utils_absolute_path::AbsolutePathBuf;
+use core_test_support::prepared_image_data_url;
 use core_test_support::responses;
 use core_test_support::skip_if_remote;
 use pretty_assertions::assert_eq;
@@ -230,7 +232,11 @@ async fn standalone_image_generation_returns_saved_path_hint_to_model(
         output["output"][0],
         json!({
             "type": "input_image",
-            "image_url": format!("data:image/png;base64,{RESULT}"),
+            // codeks 0014: generated output reaches the model through image preparation.
+            "image_url": prepared_image_data_url(
+                &format!("data:image/png;base64,{RESULT}"),
+                Some(ImageDetail::High),
+            ).await?,
             "detail": "high",
         })
     );
@@ -858,7 +864,8 @@ async fn standalone_image_edit_uses_attached_model_visible_image(
         edit_request,
         json!({
             "prompt": "add a red hat",
-            "images": [{"image_url": TINY_PNG_DATA_URL}],
+            // codeks 0014: referenced files use the shared original-size image representation.
+            "images": [{"image_url": prepared_image_data_url(TINY_PNG_DATA_URL, Some(ImageDetail::Original)).await?}],
             "background": expected_background,
             "model": "gpt-image-2",
             "quality": "auto",
@@ -910,7 +917,8 @@ async fn transparent_image_edit_preserves_metadata_and_recent_pathless_image(
         edit_request,
         json!({
             "prompt": "add a red hat",
-            "images": [{"image_url": image_url}],
+            // codeks 0014: recent inline images use the same prepared representation.
+            "images": [{"image_url": prepared_image_data_url(image_url, Some(ImageDetail::Original)).await?}],
             "background": expected_background,
             "model": "gpt-image-2",
             "quality": "auto",
@@ -1042,7 +1050,11 @@ generatedImage(result);
         output["output"][1],
         json!({
             "type": "input_image",
-            "image_url": format!("data:image/png;base64,{RESULT}"),
+            // codeks 0014: generated output reaches the model through image preparation.
+            "image_url": prepared_image_data_url(
+                &format!("data:image/png;base64,{RESULT}"),
+                Some(ImageDetail::High),
+            ).await?,
             "detail": "high",
         })
     );

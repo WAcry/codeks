@@ -5722,6 +5722,13 @@ async fn snapshot_request_shape_pre_turn_compaction_including_incoming_user_mess
     .expect("override thread settings");
     let image_url = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg=="
         .to_string();
+    // codeks 0014: compare the prepared image rather than the source PNG encoding.
+    let expected_image_url = codex_utils_image::load_data_url_for_prompt(
+        &image_url,
+        codex_utils_image::PromptImageMode::HIGH_DETAIL,
+    )
+    .expect("prepare incoming image")
+    .into_data_url();
     codex
         .start_or_steer_turn(TurnInputRequest::user_input(vec![
             UserInput::Image {
@@ -5771,7 +5778,7 @@ async fn snapshot_request_shape_pre_turn_compaction_including_incoming_user_mess
     assert!(
         follow_up_user_images
             .iter()
-            .any(|url| url == image_url.as_str()),
+            .any(|url| url == expected_image_url.as_str()),
         "expected post-compaction follow-up request to keep incoming user image content"
     );
 }

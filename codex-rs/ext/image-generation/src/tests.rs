@@ -1,4 +1,3 @@
-use base64::Engine;
 use codex_api::ImageBackground;
 use codex_api::ImageEditRequest;
 use codex_api::ImageGenerationRequest;
@@ -112,11 +111,15 @@ async fn referenced_files_record_the_exact_bytes_read_for_each_request() {
             request: ImageRequest::Edit(ImageEditRequest {
                 images: inputs
                     .iter()
-                    .map(|(_, bytes)| ImageReference::Inline {
-                        image_url: format!(
-                            "data:image/png;base64,{}",
-                            base64::engine::general_purpose::STANDARD.encode(bytes)
-                        ),
+                    // codeks 0014: referenced files use the shared lossless image encoding.
+                    .map(|(path, bytes)| ImageReference::Inline {
+                        image_url: codex_utils_image::load_for_prompt_bytes(
+                            path.as_path(),
+                            bytes.to_vec(),
+                            codex_utils_image::PromptImageMode::Original,
+                        )
+                        .expect("prepare reference image")
+                        .into_data_url(),
                     })
                     .collect(),
                 prompt: args.prompt.clone(),

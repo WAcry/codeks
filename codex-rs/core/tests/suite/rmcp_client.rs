@@ -47,6 +47,8 @@ use codex_mcp::MCP_SANDBOX_STATE_META_CAPABILITY;
 use codex_mcp::McpProtocolMode;
 use codex_mcp::SandboxState;
 use codex_models_manager::manager::RefreshStrategy;
+use codex_utils_image::PromptImageMode;
+use codex_utils_image::load_data_url_for_prompt;
 use codex_utils_path_uri::LegacyAppPathString;
 
 use codex_history::RolloutItem;
@@ -2195,10 +2197,13 @@ async fn interrupt_during_mcp_startup_preserves_user_input_in_history(
     let ResponseItem::Message { content, .. } = &envelope.item else {
         unreachable!("found the user message");
     };
+    // codeks 0014: interruption preserves the prepared image and current detail policy.
+    let prepared_image_url =
+        load_data_url_for_prompt(OPENAI_PNG, PromptImageMode::ORIGINAL_DETAIL)?.into_data_url();
     assert!(
         content.contains(&ContentItem::InputImage {
             image: ImageReference::Inline {
-                image_url: OPENAI_PNG.to_string()
+                image_url: prepared_image_url
             },
             detail: Some(ImageDetail::Original),
         }),
@@ -3408,11 +3413,14 @@ async fn stdio_image_responses_round_trip() -> anyhow::Result<()> {
             .as_str()
             .expect("first MCP image output item should be wall-time text"),
     );
+    // codeks 0014: keep raw MCP event checks above, and compare the prepared model image.
+    let prepared_image_url =
+        load_data_url_for_prompt(OPENAI_PNG, PromptImageMode::HIGH_DETAIL)?.into_data_url();
     assert_eq!(
         output[1],
         json!({
             "type": "input_image",
-            "image_url": OPENAI_PNG,
+            "image_url": prepared_image_url,
             "detail": "high"
         })
     );
@@ -3604,7 +3612,11 @@ async fn stdio_image_responses_preserve_original_detail_metadata() -> anyhow::Re
         output[1],
         json!({
             "type": "input_image",
-            "image_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==",
+            // codeks 0014: preserve the requested detail with the shared prepared image.
+            "image_url": load_data_url_for_prompt(
+                "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==",
+                PromptImageMode::ORIGINAL_DETAIL,
+            )?.into_data_url(),
             "detail": "original",
         })
     );

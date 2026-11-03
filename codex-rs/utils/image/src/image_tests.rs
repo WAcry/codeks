@@ -80,8 +80,47 @@ fn image_bytes_with_metadata(
     encoded
 }
 
+#[test]
+fn reencoded_png_is_smaller_than_fast_and_keeps_pixels() {
+    let pixels = ImageBuffer::from_pixel(1024, 1024, Rgba([32u8, 64, 96, 255]));
+    let image = DynamicImage::ImageRgba8(pixels.clone());
+    let (encoded, format) = encode_image(
+        &image,
+        ImageFormat::Png,
+        ImageMetadata {
+            icc_profile: None,
+            exif: None,
+        },
+    )
+    .expect("encode balanced PNG");
+
+    let mut fast_bytes = Vec::new();
+    PngEncoder::new(&mut fast_bytes)
+        .write_image(
+            pixels.as_raw(),
+            pixels.width(),
+            pixels.height(),
+            ColorType::Rgba8.into(),
+        )
+        .expect("encode fast PNG baseline");
+
+    assert_eq!(format, ImageFormat::Png);
+    assert!(
+        encoded.len() < fast_bytes.len(),
+        "balanced PNG ({} bytes) should beat fast PNG ({} bytes)",
+        encoded.len(),
+        fast_bytes.len()
+    );
+    assert_eq!(
+        image::load_from_memory(&encoded)
+            .expect("decode balanced PNG")
+            .to_rgba8(),
+        pixels
+    );
+}
+
 #[tokio::test(flavor = "multi_thread")]
-async fn returns_original_image_when_within_bounds() {
+async fn preserves_pixels_when_within_bounds() {
     for (format, mime) in [
         (ImageFormat::Png, "image/png"),
         (ImageFormat::WebP, "image/webp"),
@@ -98,17 +137,23 @@ async fn returns_original_image_when_within_bounds() {
 
         assert_eq!(encoded.width, 64);
         assert_eq!(encoded.height, 32);
-        assert_eq!(encoded.mime, mime);
-        assert_eq!(encoded.bytes.as_ref(), original_bytes);
+        // codeks 0014: PNG may use a smaller lossless representation.
+        if format == ImageFormat::Png {
+            assert_eq!(
+                image::load_from_memory(&encoded.bytes).unwrap().to_rgba8(),
+                image
+            );
+            assert!(encoded.bytes.len() <= original_bytes.len());
+        } else {
+            assert_eq!(encoded.mime, mime);
+            assert_eq!(encoded.bytes.as_ref(), original_bytes);
+        }
     }
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn downscales_large_image() {
-    for (format, mime) in [
-        (ImageFormat::Png, "image/png"),
-        (ImageFormat::WebP, "image/webp"),
-    ] {
+    for format in [ImageFormat::Png, ImageFormat::WebP] {
         let image = ImageBuffer::from_pixel(4096, 2048, Rgba([200u8, 10, 10, 255]));
         let original_bytes = image_bytes(&image, format);
 
@@ -121,11 +166,12 @@ async fn downscales_large_image() {
 
         assert!(processed.width <= MAX_DIMENSION);
         assert!(processed.height <= MAX_DIMENSION);
-        assert_eq!(processed.mime, mime);
+        // codeks 0014: resized PNG and WebP both use lossless WebP.
+        assert_eq!(processed.mime, "image/webp");
 
         let detected_format =
             image::guess_format(&processed.bytes).expect("detect resized output format");
-        assert_eq!(detected_format, format);
+        assert_eq!(detected_format, ImageFormat::WebP);
 
         let loaded =
             image::load_from_memory(&processed.bytes).expect("read resized bytes back into image");
@@ -147,7 +193,8 @@ async fn downscales_tall_image_to_fit_square_bounds() {
 
     assert_eq!(processed.width, 512);
     assert_eq!(processed.height, MAX_DIMENSION);
-    assert_eq!(processed.mime, "image/png");
+    // codeks 0014: prompt images use lossless WebP when conversion is smaller.
+    assert_eq!(processed.mime, "image/webp");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -165,7 +212,10 @@ async fn resizing_preserves_supported_metadata() {
 
         assert_eq!((processed.width, processed.height), (2048, 2));
 
-        let mut decoder = ImageReader::with_format(Cursor::new(&processed.bytes), format)
+        // codeks 0014: decode the selected output format after PNG conversion.
+        let mut decoder = ImageReader::new(Cursor::new(&processed.bytes))
+            .with_guessed_format()
+            .expect("detect output format")
             .into_decoder()
             .expect("create decoder");
         assert_eq!(
@@ -224,12 +274,19 @@ async fn preserves_large_image_in_original_mode() {
 
     assert_eq!(processed.width, 4096);
     assert_eq!(processed.height, 2048);
-    assert_eq!(processed.mime, "image/png");
-    assert_eq!(processed.bytes.as_ref(), original_bytes);
+    // codeks 0014: prompt images use lossless WebP when conversion is smaller.
+    assert_eq!(processed.mime, "image/webp");
+    assert_eq!(
+        image::load_from_memory(&processed.bytes)
+            .unwrap()
+            .to_rgba8(),
+        image
+    );
+    assert!(processed.bytes.len() < original_bytes.len());
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn data_url_processing_preserves_supported_source_bytes() {
+async fn data_url_processing_preserves_png_pixels() {
     let image = ImageBuffer::from_pixel(64, 32, Rgba([10u8, 20, 30, 255]));
     let original_bytes = image_bytes(&image, ImageFormat::Png);
     let image_url = data_url_from_bytes("image/png", &original_bytes)
@@ -241,8 +298,15 @@ async fn data_url_processing_preserves_supported_source_bytes() {
 
     assert_eq!(processed.width, 64);
     assert_eq!(processed.height, 32);
-    assert_eq!(processed.mime, "image/png");
-    assert_eq!(processed.bytes.as_ref(), original_bytes);
+    // codeks 0014: prompt images use lossless WebP when conversion is smaller.
+    assert_eq!(processed.mime, "image/webp");
+    assert_eq!(
+        image::load_from_memory(&processed.bytes)
+            .unwrap()
+            .to_rgba8(),
+        image
+    );
+    assert!(processed.bytes.len() < original_bytes.len());
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -378,3 +442,7 @@ async fn bounds_cache_by_encoded_byte_size() {
     assert!(cache.get(&key(2)).is_some());
     assert!(cache.get(&key(3)).is_none());
 }
+
+// codeks 0014: cover lossless selection and PNG formats that must keep source bytes.
+#[path = "lossless_webp_tests.rs"]
+mod lossless_webp_tests;

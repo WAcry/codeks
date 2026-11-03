@@ -337,7 +337,8 @@ async fn assert_user_turn_local_image_resizes_to(
     let (prefix, encoded) = image_url
         .split_once(',')
         .context("image url contains data prefix")?;
-    assert_eq!(prefix, "data:image/png;base64");
+    // codeks 0014: re-encoded prompt images use lossless WebP.
+    assert_eq!(prefix, "data:image/webp;base64");
 
     let decoded = BASE64_STANDARD
         .decode(encoded)
@@ -570,7 +571,8 @@ async fn view_image_tool_attaches_local_image() -> anyhow::Result<()> {
     let (prefix, encoded) = image_url
         .split_once(',')
         .expect("image url contains data prefix");
-    assert_eq!(prefix, "data:image/png;base64");
+    // codeks 0014: re-encoded prompt images use lossless WebP.
+    assert_eq!(prefix, "data:image/webp;base64");
 
     let decoded = BASE64_STANDARD
         .decode(encoded)
@@ -641,7 +643,9 @@ async fn view_image_routes_to_selected_local_environment() -> anyhow::Result<()>
         .and_then(Value::as_str)
         .context("view_image output should include image_url")?;
     assert!(
-        image_url.starts_with("data:image/png;base64,"),
+        // codeks 0014: small PNGs retain their bytes or use smaller lossless WebP.
+        image_url.starts_with("data:image/png;base64,")
+            || image_url.starts_with("data:image/webp;base64,"),
         "unexpected image_url: {image_url}",
     );
 
@@ -819,7 +823,9 @@ async fn view_image_routes_to_selected_remote_environment() -> anyhow::Result<()
             .and_then(Value::as_str)
             .context("view_image output should include image_url")?;
         assert!(
-            image_url.starts_with("data:image/png;base64,"),
+            // codeks 0014: small PNGs retain their bytes or use smaller lossless WebP.
+            image_url.starts_with("data:image/png;base64,")
+                || image_url.starts_with("data:image/webp;base64,"),
             "unexpected image_url: {image_url}",
         );
     }
@@ -1275,7 +1281,8 @@ async fn assert_view_image_tool_resizes_without_original_support(
     let (prefix, encoded) = image_url
         .split_once(',')
         .expect("image url contains data prefix");
-    assert_eq!(prefix, "data:image/png;base64");
+    // codeks 0014: re-encoded prompt images use lossless WebP.
+    assert_eq!(prefix, "data:image/webp;base64");
 
     let decoded = BASE64_STANDARD
         .decode(encoded)
