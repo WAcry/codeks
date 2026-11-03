@@ -16,6 +16,8 @@ use image::ImageEncoder;
 use image::ImageFormat;
 use image::ImageReader;
 use image::codecs::jpeg::JpegEncoder;
+use image::codecs::png::CompressionType;
+use image::codecs::png::FilterType as PngFilterType;
 use image::codecs::png::PngEncoder;
 use image::codecs::webp::WebPEncoder;
 use image::imageops::FilterType;
@@ -32,6 +34,8 @@ pub const MAX_PROMPT_IMAGE_INPUT_BYTES: usize = 1024 * 1024 * 1024;
 const MAX_IMAGE_CACHE_BYTES: usize = 64 * 1024 * 1024;
 
 pub mod error;
+// codeks 0014: optimize static PNG inputs before they enter prompt history.
+mod lossless_webp;
 
 pub use crate::error::ImageProcessingError;
 
@@ -182,6 +186,13 @@ fn load_for_prompt_bytes_uncached(
             let target_format = format
                 .filter(|format| can_preserve_source_bytes(*format))
                 .unwrap_or(ImageFormat::Png);
+            // codeks 0014: resized PNGs go directly to lossless WebP.
+            let target_format =
+                if target_format == ImageFormat::Png && format == Some(ImageFormat::Png) {
+                    ImageFormat::WebP
+                } else {
+                    target_format
+                };
             let (bytes, output_format) = encode_image(&resized, target_format, metadata)?;
             let mime = format_to_mime(output_format);
             EncodedImage {
@@ -194,9 +205,15 @@ fn load_for_prompt_bytes_uncached(
             }
         } else {
             if let Some(format) = format.filter(|format| can_preserve_source_bytes(*format)) {
-                let mime = format_to_mime(format);
+                // codeks 0014: retain source bytes when lossless WebP is not smaller.
+                let (bytes, output_format) = if format == ImageFormat::Png {
+                    lossless_webp::prefer_smaller(&path_buf, &dynamic, file_bytes, metadata)?
+                } else {
+                    (file_bytes, format)
+                };
+                let mime = format_to_mime(output_format);
                 EncodedImage {
-                    bytes: file_bytes.into(),
+                    bytes: bytes.into(),
                     mime,
                     source_width: width,
                     source_height: height,
@@ -377,7 +394,12 @@ fn encode_image(
     match target_format {
         ImageFormat::Png => {
             let rgba = image.to_rgba8();
-            let mut encoder = PngEncoder::new(&mut buffer);
+            // codeks 0014: balanced lossless compression avoids unnecessarily large PNG payloads.
+            let mut encoder = PngEncoder::new_with_quality(
+                &mut buffer,
+                CompressionType::Default,
+                PngFilterType::Adaptive,
+            );
             apply_image_metadata(&mut encoder, icc_profile, exif, target_format)?;
             encoder
                 .write_image(

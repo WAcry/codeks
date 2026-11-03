@@ -7,6 +7,8 @@ use codex_protocol::models::ImageReference;
 use codex_protocol::openai_models::InputModality;
 use codex_protocol::protocol::EventMsg;
 use codex_protocol::user_input::UserInput;
+use codex_utils_image::PromptImageMode;
+use codex_utils_image::load_data_url_for_prompt;
 use core_test_support::fs_wait;
 use core_test_support::responses;
 use core_test_support::skip_if_no_network;
@@ -59,6 +61,9 @@ mv "${tmp_path}" "${payload_path}""#,
         .await?;
 
     let image_url = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==";
+    // codeks 0014: model attachments use the shared prepared representation.
+    let prepared_image_url =
+        load_data_url_for_prompt(image_url, PromptImageMode::HIGH_DETAIL)?.into_data_url();
     let audio_url = "data:audio/wav;base64,AAAA";
     codex
         .start_or_steer_turn(TurnInputRequest::user_input(vec![
@@ -81,7 +86,10 @@ mv "${tmp_path}" "${payload_path}""#,
         .await?;
     wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
     let request = response.single_request();
-    assert_eq!(request.message_input_image_urls("user"), [image_url]);
+    assert_eq!(
+        request.message_input_image_urls("user"),
+        [prepared_image_url]
+    );
     assert_eq!(request.message_input_audio_urls("user"), [audio_url]);
 
     // We fork the notify script, so we need to wait for it to write to the file.

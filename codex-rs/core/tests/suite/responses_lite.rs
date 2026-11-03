@@ -20,6 +20,8 @@ use codex_protocol::openai_models::ToolMode;
 use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::Op;
 use codex_protocol::user_input::UserInput;
+use codex_utils_image::PromptImageMode;
+use codex_utils_image::load_data_url_for_prompt;
 use codex_web_search_extension::install as install_web_search_extension;
 use core_test_support::apps_test_server::AppsTestServer;
 use core_test_support::apps_test_server::SEARCH_CALENDAR_CREATE_TOOL;
@@ -298,6 +300,9 @@ async fn responses_lite_prepares_images() -> Result<()> {
     )
     .await;
     let image_url = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==";
+    // codeks 0014: Lite sends the shared prepared representation of the source PNG.
+    let prepared_image_url =
+        load_data_url_for_prompt(image_url, PromptImageMode::ORIGINAL_DETAIL)?.into_data_url();
     let remote_image_url = "https://example.com/image.png";
     let mut builder = test_codex().with_model_info_override("gpt-5.4", |model_info| {
         model_info.use_responses_lite = true;
@@ -340,7 +345,7 @@ async fn responses_lite_prepares_images() -> Result<()> {
         vec![
             serde_json::json!({
                 "type": "input_image",
-                "image_url": image_url
+                "image_url": prepared_image_url
             }),
             serde_json::json!({
                 "type": "input_text",
