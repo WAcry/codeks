@@ -80,6 +80,45 @@ fn image_bytes_with_metadata(
     encoded
 }
 
+#[test]
+fn reencoded_png_is_smaller_than_fast_and_keeps_pixels() {
+    let pixels = ImageBuffer::from_pixel(1024, 1024, Rgba([32u8, 64, 96, 255]));
+    let image = DynamicImage::ImageRgba8(pixels.clone());
+    let (encoded, format) = encode_image(
+        &image,
+        ImageFormat::Png,
+        ImageMetadata {
+            icc_profile: None,
+            exif: None,
+        },
+    )
+    .expect("encode balanced PNG");
+
+    let mut fast_bytes = Vec::new();
+    PngEncoder::new(&mut fast_bytes)
+        .write_image(
+            pixels.as_raw(),
+            pixels.width(),
+            pixels.height(),
+            ColorType::Rgba8.into(),
+        )
+        .expect("encode fast PNG baseline");
+
+    assert_eq!(format, ImageFormat::Png);
+    assert!(
+        encoded.len() < fast_bytes.len(),
+        "balanced PNG ({} bytes) should beat fast PNG ({} bytes)",
+        encoded.len(),
+        fast_bytes.len()
+    );
+    assert_eq!(
+        image::load_from_memory(&encoded)
+            .expect("decode balanced PNG")
+            .to_rgba8(),
+        pixels
+    );
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn returns_original_image_when_within_bounds() {
     for (format, mime) in [
