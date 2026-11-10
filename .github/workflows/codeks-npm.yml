@@ -8,6 +8,14 @@ on:
         description: Publish npm packages and release archives (codeks/* tags only)
         type: boolean
         default: false
+      reuse_build_run:
+        description: Reuse all 12 verified native build artifacts from a prior codeks-npm run (0 builds normally)
+        type: number
+        default: 0
+      reuse_build_tag:
+        description: Existing codeks/* release tag whose commit matches the reused build run (required for reuse)
+        type: string
+        default: ''
 
 concurrency:
   group: codeks-npm-${{ github.ref }}
@@ -27,25 +35,100 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
       matrix: ${{ steps.platforms.outputs.matrix }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
+          ref: ${{ inputs.reuse_build_tag || github.ref }}
           fetch-depth: 100
           persist-credentials: false
       - name: Check patch stack and resolve version
         id: version
         env:
           PUBLISH: ${{ inputs.publish }}
+          REUSE_BUILD_RUN: ${{ inputs.reuse_build_run }}
+          REUSE_BUILD_TAG: ${{ inputs.reuse_build_tag }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           python3 fork/tools/codeks.py check
+          if [[ "$REUSE_BUILD_RUN" != "0" ]]; then
+            if [[ -z "$REUSE_BUILD_TAG" || "$REUSE_BUILD_TAG" != codeks/rust-v* ]]; then
+              echo 'Reusing build artifacts requires an existing codeks/rust-v* release tag' >&2
+              exit 1
+            fi
+          elif [[ -n "$REUSE_BUILD_TAG" ]]; then
+            echo 'reuse_build_tag must be empty when reuse_build_run is 0' >&2
+            exit 1
+          fi
+          if [[ -n "$REUSE_BUILD_TAG" ]]; then
+            echo "tag=$REUSE_BUILD_TAG" >> "$GITHUB_OUTPUT"
+          elif [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+          else
+            echo 'tag=' >> "$GITHUB_OUTPUT"
+          fi
           args=()
           if [[ "$PUBLISH" == "true" ]]; then args+=(--require-tag); fi
+          if [[ -n "$REUSE_BUILD_TAG" ]]; then args+=(--tag "$REUSE_BUILD_TAG"); fi
           python3 fork/tools/npm_package.py version "${args[@]}" >> "$GITHUB_OUTPUT"
+      - name: Verify reused native build provenance and artifact completeness
+        if: ${{ inputs.reuse_build_run > 0 }}
+        env:
+          REUSE_BUILD_RUN: ${{ inputs.reuse_build_run }}
+          REUSE_BUILD_TAG: ${{ inputs.reuse_build_tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Checkout MUST be at the same tagged commit as the native build run.
+          if [[ "$(git tag --points-at HEAD --list "$REUSE_BUILD_TAG")" != "$REUSE_BUILD_TAG" ]]; then
+            echo 'Checked-out commit does not have the requested release tag' >&2
+            exit 1
+          fi
+          python3 - <<'PY'
+          import json, os, subprocess, sys
+          from pathlib import Path
+          repo = os.environ['GITHUB_REPOSITORY']
+          run_id = int(os.environ['REUSE_BUILD_RUN'])
+          if run_id <= 0:
+              raise SystemExit('Reused build run ID must be positive')
+          def api(path):
+              return json.loads(subprocess.check_output(['gh', 'api', path], text=True))
+          source = api(f'repos/{repo}/actions/runs/{run_id}')
+          commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+          if source['head_sha'] != commit or source['repository']['full_name'] != repo:
+              raise SystemExit('Reused build run provenance does not match this repository and release tag')
+          artifacts = api(f'repos/{repo}/actions/runs/{run_id}/artifacts?per_page=100')['artifacts']
+          by_name = {item['name']: item for item in artifacts}
+          sys.path.insert(0, str(Path.cwd() / 'fork' / 'tools'))
+          from npm_package import RELEASE_TARGETS
+          expected = {f'codeks-{kind}-{target}' for kind in ('base', 'voice') for target in RELEASE_TARGETS}
+          missing = expected - by_name.keys()
+          invalid = [name for name in expected & by_name.keys() if by_name[name]['expired'] or by_name[name]['size_in_bytes'] <= 0]
+          if missing or invalid:
+              raise SystemExit(f'Missing, expired or empty native artifacts: {sorted(missing | set(invalid))}')
+          print(f'Verified reuse source run #{run_id} at {commit}: {len(expected)} native artifacts')
+          PY
       # codeks 0016: check pinned downloads before starting six native jobs.
       - name: Check release asset downloader
         run: python3 .github/scripts/test_codeks_release_asset.py
+      - name: Validate embedded release packaging script
+        if: ${{ inputs.reuse_build_run == 0 }}
+        run: |
+          python3 - <<'PY'
+          import ast, textwrap
+          from pathlib import Path
+          workflow = Path('.github/workflows/codeks-npm.yml').read_text(encoding='utf-8')
+          # The validator itself mentions the step name; choose the LAST occurrence.
+          section = workflow.rsplit('      - name: Assemble voice and archive complete packages', 1)[1]
+          section = section.split('      - name: Pack all npm platforms and launcher together', 1)[0]
+          script = section.split("          python3 - <<'PY'\n", 1)[1].split('\n          PY', 1)[0]
+          ast.parse(textwrap.dedent(script), filename='release-assemble-inline.py')
+          if 'codeks_exec_release.py' not in script:
+              raise SystemExit('Standalone executor packager is missing from release assembly')
+          print('Verified release assembly Python syntax before native builds')
+          PY
       - name: Select native platforms
         id: platforms
         run: |
@@ -65,6 +148,7 @@ jobs:
   binaries:
     name: CLI ${{ matrix.target }}
     needs: prepare
+    if: ${{ inputs.reuse_build_run == 0 }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 300
     strategy:
@@ -207,6 +291,7 @@ jobs:
   voice:
     name: Voice ${{ matrix.target }}
     needs: prepare
+    if: ${{ inputs.reuse_build_run == 0 }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 300
     strategy:
@@ -331,11 +416,13 @@ jobs:
   pack:
     name: Assemble release packages
     needs: [prepare, binaries, voice]
+    if: ${{ always() && needs.prepare.result == 'success' && (inputs.reuse_build_run > 0 || (needs.binaries.result == 'success' && needs.voice.result == 'success')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
+          ref: ${{ inputs.reuse_build_tag || github.ref }}
           fetch-depth: 100
           persist-credentials: false
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
@@ -346,17 +433,22 @@ jobs:
           pattern: codeks-base-*
           merge-multiple: true
           path: ${{ runner.temp }}/inputs
+          run-id: ${{ inputs.reuse_build_run || github.run_id }}
+          github-token: ${{ github.token }}
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: codeks-voice-*
           merge-multiple: true
           path: ${{ runner.temp }}/inputs
+          run-id: ${{ inputs.reuse_build_run || github.run_id }}
+          github-token: ${{ github.token }}
       - name: Test standalone executor archive packaging
         run: python3 .github/scripts/test_codeks_exec_release.py -v
       - name: Assemble voice and archive complete packages
         env:
           PLATFORM_MATRIX: ${{ needs.prepare.outputs.matrix }}
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
         run: |
           python3 - <<'PY'
           import json, os, subprocess, sys, tarfile
@@ -372,18 +464,21 @@ jobs:
                               "--package-dir", str(root / "base" / target), "--voice-dir", str(root / "voice" / target),
                               "--output-dir", str(package)], check=True)
               subprocess.run([sys.executable, "fork/tools/npm_package.py", "archive", "--target", target,
-                              "--package-dir", str(package), "--output-dir", str(root / "archives")], check=True)
-               # codeks 0004: release the same-build standalone executor separately, without npm or voice.
-               subprocess.run([sys.executable, ".github/scripts/codeks_exec_release.py", "package",
-                               "--base-dir", str(root / "base" / target), "--target", target,
-                               "--release-version", os.environ["RELEASE_VERSION"],
-                               "--output-dir", str(root / "exec-archives")], check=True)
+                              "--package-dir", str(package), "--output-dir", str(root / "archives"),
+                              "--tag", os.environ["RELEASE_TAG"]], check=True)
+              # codeks 0004: release the same-build standalone executor separately, without npm or voice.
+              subprocess.run([sys.executable, ".github/scripts/codeks_exec_release.py", "package",
+                              "--base-dir", str(root / "base" / target), "--target", target,
+                              "--release-version", os.environ["RELEASE_VERSION"],
+                              "--output-dir", str(root / "exec-archives")], check=True)
           PY
       - name: Pack all npm platforms and launcher together
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
         run: |
           set -euo pipefail
-          python3 fork/tools/npm_package.py collect --archives-dir "$RUNNER_TEMP/archives" --vendor-dir "$RUNNER_TEMP/vendor"
-          python3 fork/tools/npm_package.py pack --vendor-src "$RUNNER_TEMP/vendor" --output-dir "$RUNNER_TEMP/npm"
+          python3 fork/tools/npm_package.py collect --archives-dir "$RUNNER_TEMP/archives" --vendor-dir "$RUNNER_TEMP/vendor" --tag "$RELEASE_TAG"
+          python3 fork/tools/npm_package.py pack --vendor-src "$RUNNER_TEMP/vendor" --output-dir "$RUNNER_TEMP/npm" --tag "$RELEASE_TAG"
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: codeks-npm-${{ needs.prepare.outputs.version }}
@@ -414,6 +509,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
+          ref: ${{ inputs.reuse_build_tag || github.ref }}
           persist-credentials: false
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
@@ -453,6 +549,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
+          ref: ${{ inputs.reuse_build_tag || github.ref }}
           persist-credentials: false
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
@@ -476,8 +573,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           NPM_VERSION: ${{ needs.prepare.outputs.version }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
         run: |
           set -euo pipefail
+          test -n "$RELEASE_TAG"
           cat > "$RUNNER_TEMP/release-notes.md" <<'EOF'
           Linux、macOS 和 Windows 的 x64 / ARM64 完整包，包含 TUI voice runtime。
 
@@ -486,8 +585,8 @@ jobs:
           macOS 包使用 ad-hoc 签名，未做 Apple Developer ID 签名或 notarization；浏览器下载后可能触发 Gatekeeper。macOS voice 要求 14.0 或更新版本。
           npm 包：@wacry/codeks。来源、版本和 fork 改动见仓库 fork/README.md。
           EOF
-          if ! gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
-            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
+          if ! gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --verify-tag \
               --title "codeks $NPM_VERSION" --notes-file "$RUNNER_TEMP/release-notes.md"
           fi
-          gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --clobber "$RUNNER_TEMP/archives/"* "$RUNNER_TEMP/exec-archives/"*
+          gh release upload "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --clobber "$RUNNER_TEMP/archives/"* "$RUNNER_TEMP/exec-archives/"*

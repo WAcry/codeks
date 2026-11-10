@@ -1,0 +1,69 @@
+# 0017 修复发布组装并安全复用同一提交的原生构建
+
+```toml
+watch_paths = [
+  ".github/workflows/codeks-npm.yml",
+  "fork/tools/npm_package.py",
+  ".github/scripts/codeks_exec_release.py",
+  ".github/scripts/test_codeks_exec_release.py",
+]
+watch_regex = [
+  "codeks-(base|voice|exec)|workflow_dispatch|actions/download-artifact",
+]
+backport_of = []
+upstream = []
+ci_skip = []
+```
+
+## 背景
+
+2026-11-09 的 `codeks/rust-v0.167.0/5` 发布 workflow（GitHub Actions 运行 [#42594162422](https://github.com/WAcry/codeks/actions/runs/42594162422)）中，**Windows/Linux/macOS x64/ARM64 六个平台的 CLI 与 Voice 原生构建共 12 个 Job 全部成功**，并各自上传构建 artifact。最终 `pack` 组装阶段执行 YAML 内嵌 Python 时，第 16 行新增的独立 Exec Server `subprocess.run` 比同一循环中的其他语句多一个缩进空格，因此报 `IndentationError: unexpected indent`，导致 `smoke` 和 `publish` 未运行。原始二进制并没有编译失败。
+
+直接重新编译十二个平台会浪费已经通过的原生构建；但从不同版本、不同仓库或错误来源拼装构建产物，则会破坏 Voice receipt、SHA256、`STABLE_GIT_COMMIT` 及 fork 补丁的可靠性。因此在原有 workflow 内提供严格受限的同 SHA 恢复路径。
+
+## 改动
+
+- `.github/workflows/codeks-npm.yml`：更正内嵌 Python 的 Exec Server `subprocess.run` 与上一级 `for platform` 内其他操作的缩进（原脚本第 16 行多一个空格）。`prepare` 在执行原生构建前新增静态检查：从原 workflow 提取 `Assemble voice and archive complete packages` 的 Python 代码，使用 `ast.parse` 验证语法并确认独立 Exec Server 打包入口存在。原生打包助手和业务代码不变。
+- `workflow_dispatch` 新增两个可选输入：`reuse_build_run`（number，默认 0）以及 `reuse_build_tag`（string，默认空）。未填时维持原有 `prepare → 6 CLI + 6 voice → pack → 6 smoke → publish` 全量构建，输入 `publish=true` 的 tag 约束保持不变。
+- 两项均填写时，`prepare` checkout 现存的 `codeks/rust-v*` tag，拒绝无 tag、只填 tag 或非法 run ID；通过 `gh api` 核对历史运行属于同仓库，其 `head_sha` 与 tag 对应 HEAD **完全一致**，并核对六个平台 `codeks-base-*` 与 `codeks-voice-*` 共 12 份 artifact 存在、未过期、非空；任一不符立即失败。为了阻止跨提交重用，不接受手工指定不同 SHA 或把别的版本的文件冒充当前构建。
+- 验证通过时，原生 `binaries`、`voice` jobs 跳过，`pack` 用 `actions/download-artifact` 的 `run-id` 和 `github.token` 读取同一历史 run 的原生 artifact。`pack` 仍运行完整 `voice_package.py assemble`、完整 CLI 的 archive / collect、独立 Exec Server 的 archive、npm pack；紧接着仍由对应平台的六个 runner 做完整 `npm` 与独立 Exec Server 的运行时 smoke。成功后 `publish=true` 才允许上传 npm 与 GitHub Release。
+- 恢复任务的 `pack/smoke/publish` 都 checkout **原始 tag**，在 `npm_package.py version/archive/collect/pack` 显式传入原始 tag，以保持版本号、来源提交及 Voice receipt 一致。`RELEASE_TAG` 显式指定 GitHub Release 的准确 tag，而不是把用来触发新 workflow 的 `main` 误当作发布 tag。保留原有 npm trusted publishing（无长期 npm token）与 GitHub `contents:write` 发布权限，未新建第二条复制构建的工作流。
+
+## 必要性
+
+问题是确定性 Python 语法错误，单纯重试原工作流无效；重复执行 12 个原生 Job 又延误发布。提供受限恢复模式可用当前 fork 同提交的已编译成果真正完成 `pack → smoke → publish`，同时不会隐藏任何失败测试、替换执行服务器二进制或弱化供应链校验。
+
+## 何时扩展
+
+- 当构建矩阵、artifact 命名、tag 版本协议或 `npm_package.py` 入参发生变化时，同时更新十二个 artifact 的完整性验证；`reuse_build_run` 与 `reuse_build_tag` 不能脱钩。
+- 增加新的单独发布程序或更改 Voice/Exec Server receipt 时，确保它也来自同 SHA 的原生 artifact，并参加全部平台 smoke；不允许通过跨版本复用规避构建失败。
+- 若将内嵌打包脚本移入独立文件，应保留构建前的 `ast.parse`/`py_compile` 语法检查，避免原生构建完成后才发现语法错误。
+
+## 何时移除
+
+如果上游/Codeks 采用可证明同 SHA 的持久构建缓存、自动重打包或统一可复用工作流，可收敛为更简洁的入口。不能依靠 force-push 重指向旧发布 tag，不能跳过校验。
+
+## 冲突处理
+
+以最新上游 Cargo、release 资源、矩阵和规范包结构为准。保留独立 Exec Server 的打包语句与普通组装循环同级；历史产物恢复只应发生在原始 run 与发布 tag commit 相同的情况。检查 `pack` 的 `needs` 条件允许原生 job 成功、或经过验证的历史 run 两条路径，但不能允许跳过的原生构建被误判为成功；若 tag、artifact、版本不一致必须直接失败。
+
+## 验证
+
+- `actionlint .github/workflows/codeks-npm.yml` 应通过；`prepare` 内嵌 Python 和 `pack` 内嵌 Python 用 `ast.parse` 验证，原生打包测试 `python3 .github/scripts/test_codeks_exec_release.py -v` 通过。专门检查过错位缩进在 `prepare` 前置检查中会被发现。
+- 运行 `python3 fork/tools/codeks.py check` 确认新补丁符合规范，且已有 0004/0016 补丁不因改动而消失。
+- 用 `/5` 成功原生运行 `42594162422` 的 Linux x64 `base` 与 `voice` artifact 本地执行打包循环；已从真实 artifact 成功生成完整 CLI voice 归档与独立 Exec Server 归档；测试完整合并时需验证六平台输入、产物、SHA256。
+- 远端恢复先用 `publish=false` 不发布试运行，核对原生 12 个 Job 确实被跳过、pack/六个 smoke 全部通过，然后用同一 run/tag 的 `publish=true` 发布并核对 npm 版本及 GitHub Release 六个平台的完整 CLI、独立 Exec Server 与 SHA256，避免先发布后发现 smoke 异常。
+
+恢复命令（只复用已通过、未过期的 **0.167.0-codeks.5** 同提交产物）：
+
+```bash
+gh workflow run codeks-npm.yml -R WAcry/codeks --ref main \
+  -f publish=false -f reuse_build_run=42594162422 \
+  -f reuse_build_tag=codeks/rust-v0.167.0/5
+```
+
+注意：workflow 本身从含修复的新 `main` 定义执行，但校验、构建产物元数据及 pack/smoke 所用源码均来自原来的 `/5` tag。只修复 workflow 的新提交自身需要全量构建时，应使用正常无 `reuse_build_run` 的发布流程。
+
+## 记录
+
+- 2026-11-09 @ rust-v0.167.0：新增。修复独立 Exec Server 打包的 Python 意外缩进，增加普通构建前语法校验，并增加严格绑定源码 SHA、12 份 artifact 和原 tag 的恢复发布能力。
