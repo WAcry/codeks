@@ -42,7 +42,26 @@ runs:
         fi
 
         mkdir -p "${binding_dir}"
-        curl -fsSL "${base_url}/${checksums_name}" -o "${checksums_path}"
+        # codeks 0015: browser asset downloads can fail with HTTP 504 while
+        # public release assets remain available through the GitHub REST API.
+        release_assets=""
+        download_release_asset() {
+          local asset_name="$1" destination="$2" asset_id
+          if [[ -z "${release_assets}" ]] && curl -fsSL --retry 1 --retry-all-errors --retry-delay 2 "${base_url}/${asset_name}" -o "${destination}"; then
+            return
+          fi
+          if [[ -z "${release_assets}" ]]; then
+            echo "Direct release download failed; using GitHub release asset API" >&2
+            release_assets="$(curl -fsSL --retry 3 --retry-all-errors --retry-delay 3 "https://api.github.com/repos/openai/codex/releases/tags/${release_tag}")"
+          fi
+          asset_id="$(printf '%s' "${release_assets}" | ASSET_NAME="${asset_name}" python3 -c 'import json,os,sys; print(next((str(a["id"]) for a in json.load(sys.stdin)["assets"] if a["name"] == os.environ["ASSET_NAME"]), ""))')"
+          if [[ -z "${asset_id}" ]]; then
+            echo "Release asset not found: ${asset_name}" >&2
+            return 1
+          fi
+          curl -fsSL --retry 3 --retry-all-errors --retry-delay 3 -H "Accept: application/octet-stream" "https://api.github.com/repos/openai/codex/releases/assets/${asset_id}" -o "${destination}"
+        }
+        download_release_asset "${checksums_name}" "${checksums_path}"
         # Check the original manifest bytes even when either checksum file uses CRLF.
         expected_manifest_checksum="$(grep -F "  ${checksums_name}" "${trusted_checksums}" | cut -d ' ' -f 1)"
         actual_manifest_checksum="$(python3 -c 'import hashlib, pathlib, sys; print(hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest())' "${checksums_path}")"
@@ -50,8 +69,8 @@ runs:
           echo "Checksum mismatch for ${checksums_name}: expected ${expected_manifest_checksum}, got ${actual_manifest_checksum}" >&2
           exit 1
         fi
-        curl -fsSL "${base_url}/${archive_name}" -o "${archive_path}"
-        curl -fsSL "${base_url}/${binding_name}" -o "${binding_path}"
+        download_release_asset "${archive_name}" "${archive_path}"
+        download_release_asset "${binding_name}" "${binding_path}"
 
         if [[ "$(wc -l < "${checksums_path}")" -ne 2 ]]; then
           echo "Expected exactly two checksums for ${TARGET} in ${checksums_path}" >&2

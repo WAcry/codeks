@@ -43,6 +43,9 @@ jobs:
           args=()
           if [[ "$PUBLISH" == "true" ]]; then args+=(--require-tag); fi
           python3 fork/tools/npm_package.py version "${args[@]}" >> "$GITHUB_OUTPUT"
+      # codeks 0015: check pinned downloads before starting six native jobs.
+      - name: Check release asset downloader
+        run: python3 .github/scripts/test_codeks_release_asset.py
       - name: Select native platforms
         id: platforms
         run: |
@@ -251,11 +254,19 @@ jobs:
             echo "CODEKS_BAZEL_DISK_CACHE=$root/d"
           } >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
-      - uses: facebook/install-dotslash@1e4e7b3e07eaca387acb98f1d4720e0bee8dbb6a # v2
+      # codeks 0015: avoid flaky github.com release downloads and pin SHA256.
+      - name: Install verified DotSlash
+        run: python3 .github/scripts/codeks_release_asset.py install-dotslash
       - uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
         with:
           bazelisk-version: 1.28.1
           output-base: ${{ env.BAZEL_OUTPUT_BASE }}
+      - name: Prefetch verified Bazel release inputs
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/codeks_release_asset.py prefetch-bazel \
+            --output-dir "$RUNNER_TEMP/codeks-bazel-distdir"
+          echo "CODEKS_BAZEL_DISTDIR=$RUNNER_TEMP/codeks-bazel-distdir" >> "$GITHUB_ENV"
       - name: Restore voice build cache
         uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
@@ -282,6 +293,7 @@ jobs:
           fi
           bazel --noexperimental_remote_repo_contents_cache build --config=release "${platform_args[@]}" \
             --repository_cache="$BAZEL_REPOSITORY_CACHE" --repo_contents_cache="$BAZEL_REPO_CONTENTS_CACHE" \
+            --distdir="$CODEKS_BAZEL_DISTDIR" \
             --disk_cache="$CODEKS_BAZEL_DISK_CACHE" --experimental_disk_cache_gc_max_size=2G \
             //codex-rs/voice-host:codex-voice-host //third_party/voice:native_runtime
           python fork/tools/voice_package.py stage --target "$TARGET" \
