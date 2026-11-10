@@ -33,6 +33,9 @@ jobs:
           persist-credentials: false
       - name: Check patch stack and documents
         run: python3 fork/tools/codeks.py check
+      # codeks 0015: exercise hash-pinned build-input download logic without network.
+      - name: Check release asset downloader
+        run: python3 .github/scripts/test_codeks_release_asset.py
       - name: Select Rust scope
         id: scope
         env:
