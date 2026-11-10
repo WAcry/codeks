@@ -501,6 +501,9 @@ jobs:
   smoke:
     name: Verify ${{ matrix.target }}
     needs: [prepare, pack]
+    # Reused native-build jobs are intentionally skipped. Check direct job results
+    # rather than the implicit success() over their skipped transitive needs.
+    if: ${{ always() && needs.prepare.result == 'success' && needs.pack.result == 'success' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
     strategy:
@@ -540,7 +543,7 @@ jobs:
   publish:
     name: Publish npm and release downloads
     needs: [prepare, smoke]
-    if: ${{ inputs.publish }}
+    if: ${{ always() && inputs.publish && needs.prepare.result == 'success' && needs.smoke.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -590,3 +593,30 @@ jobs:
               --title "codeks $NPM_VERSION" --notes-file "$RUNNER_TEMP/release-notes.md"
           fi
           gh release upload "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --clobber "$RUNNER_TEMP/archives/"* "$RUNNER_TEMP/exec-archives/"*
+
+  finalize:
+    name: Assert release pipeline is complete
+    if: ${{ always() }}
+    needs: [prepare, pack, smoke, publish]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Reject incomplete or skipped release verification
+        env:
+          PREPARE_RESULT: ${{ needs.prepare.result }}
+          PACK_RESULT: ${{ needs.pack.result }}
+          SMOKE_RESULT: ${{ needs.smoke.result }}
+          PUBLISH_RESULT: ${{ needs.publish.result }}
+          PUBLISH_REQUESTED: ${{ inputs.publish }}
+        run: |
+          set -euo pipefail
+          for result in "$PREPARE_RESULT" "$PACK_RESULT" "$SMOKE_RESULT"; do
+            if [[ "$result" != 'success' ]]; then
+              echo "Required release stage did not succeed: prepare=$PREPARE_RESULT pack=$PACK_RESULT smoke=$SMOKE_RESULT" >&2
+              exit 1
+            fi
+          done
+          if [[ "$PUBLISH_REQUESTED" == 'true' && "$PUBLISH_RESULT" != 'success' ]]; then
+            echo "Requested release publishing did not succeed: $PUBLISH_RESULT" >&2
+            exit 1
+          fi
+          echo 'All required packaging, native smoke, and publishing stages completed successfully.'
