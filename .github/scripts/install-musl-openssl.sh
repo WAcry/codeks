@@ -21,7 +21,11 @@ openssl_prefix="${openssl_root}/prefix"
 if [[ ! -f "${openssl_prefix}/.complete" ]]; then
   mkdir -p "${openssl_root}"
   archive="${openssl_root}/openssl-${openssl_version}.tar.gz"
-  curl -fsSL "https://github.com/openssl/openssl/releases/download/openssl-${openssl_version}/openssl-${openssl_version}.tar.gz" -o "${archive}"
+  # codeks 0015: fetch the exact upstream asset by ID to avoid release URL 504s.
+  python3 "$(dirname "${BASH_SOURCE[0]}")/codeks_release_asset.py" download \
+    --repo openssl/openssl --tag "openssl-${openssl_version}" \
+    --asset "openssl-${openssl_version}.tar.gz" \
+    --sha256 "${openssl_sha256}" --output "${archive}"
   echo "${openssl_sha256}  ${archive}" | sha256sum -c -
   tar -xzf "${archive}" -C "${openssl_root}"
 
