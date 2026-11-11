@@ -8,6 +8,9 @@ use codex_utils_path_uri::PathConvention;
 use codex_utils_path_uri::PathUri;
 use futures::StreamExt;
 
+// codeks 0019: keep environment-aware catalog inspection separate from host skills/list.
+mod executor_skill_catalog;
+
 #[derive(Clone)]
 pub(crate) struct CatalogRequestProcessor {
     pub(super) outgoing: Arc<OutgoingMessageSender>,
