@@ -975,6 +975,12 @@ client_request_definitions! {
         serialization: global_shared_read("config"),
         response: v2::SkillsListResponse,
     },
+    // codeks 0041: read a directory without starting or resuming a conversation.
+    SkillsCatalog => "skills/catalog" {
+        params: v2::SkillsCatalogParams,
+        serialization: global_shared_read("config"),
+        response: v2::SkillsCatalogResponse,
+    },
     SkillsExtraRootsSet => "skills/extraRoots/set" {
         params: v2::SkillsExtraRootsSetParams,
         serialization: global("config"),
