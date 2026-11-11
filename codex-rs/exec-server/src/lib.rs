@@ -16,6 +16,8 @@ mod environment_config;
 mod environment_provider;
 mod environment_registry;
 mod environment_toml;
+// codeks 0020: normalize executor-owned MCP process configuration.
+mod executor_mcp_config;
 // codeks 0022: apply executor-local user skill settings to discovery responses.
 mod executor_skill_config;
 mod file_handle;

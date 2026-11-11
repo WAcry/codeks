@@ -67,6 +67,10 @@ use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
 use url::Url;
 
+// codeks 0020: exercise ordinary executor stdio configuration through app-server.
+#[path = "executor_mcp_config_tests.rs"]
+mod executor_config;
+
 const DEFAULT_READ_TIMEOUT: Duration = Duration::from_secs(20);
 const EXECUTOR_HTTP_MCP_URL: &str = "http://executor-only.invalid/mcp";
 const HTTP_MCP_SERVER_NAME: &str = "executor_http";
@@ -227,7 +231,12 @@ async fn selected_executor_discovers_browser_mcp_with_executor_only_bearer_token
             .iter()
             .any(|server| { server.name == PROJECT_MCP_SERVER_NAME && server.plugin_id.is_none() })
     );
-    assert!(servers.iter().all(|server| server.name != "ignored_stdio"));
+    // codeks 0020: stdio is discovered, but this server is excluded by host requirements.
+    assert!(
+        servers
+            .iter()
+            .any(|server| { server.name == "ignored_stdio" && server.tools.is_empty() })
+    );
     assert!(
         servers
             .iter()
