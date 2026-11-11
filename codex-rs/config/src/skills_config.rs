@@ -97,6 +97,22 @@ pub struct SkillConfigRules {
 }
 
 impl SkillConfigRules {
+    // codeks 0022: use the native selector rules for an executor's user configuration.
+    pub fn from_user_config(config: &SkillsConfig) -> Self {
+        Self {
+            entries: config
+                .config
+                .iter()
+                .filter_map(|entry| {
+                    skill_config_rule_selector(entry).map(|selector| SkillConfigRule {
+                        selector,
+                        enabled: entry.enabled,
+                    })
+                })
+                .collect(),
+        }
+    }
+
     /// Applies rules in order; later rules override earlier rules for matching skills.
     ///
     /// Explicit path selectors remain effective even when no current skill matches.
