@@ -473,6 +473,10 @@ pub enum ThreadItemPayload {
     ImageView {
         id: String,
         path: LegacyAppPathString,
+        // codeks 0021: absent only when the originating environment was not recorded.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        environment_id: Option<String>,
     },
     Sleep(SleepItem),
     ImageGeneration(ImageGenerationItem),
@@ -1059,6 +1063,8 @@ impl From<CoreTurnItem> for ThreadItemPayload {
                 results: search.results,
             }),
             CoreTurnItem::ImageView(image) => Self::ImageView {
+                // codeks 0021: retain image filesystem identity in live and canonical history items.
+                environment_id: image.environment_id,
                 id: image.id,
                 path: image.path.into(),
             },

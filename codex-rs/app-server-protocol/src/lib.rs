@@ -70,3 +70,7 @@ mod schema_fixtures_tests;
 use tests::export;
 #[cfg(test)]
 use tests::schema_fixtures;
+
+// codeks 0021: validate image environment identity and foreign read paths.
+#[cfg(test)]
+mod codeks_environment_image_preview_tests;

@@ -3921,6 +3921,10 @@ pub struct ExecCommandEndEvent {
 
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, TS)]
 pub struct ViewImageToolCallEvent {
+    // codeks 0021: preserve the selected environment through legacy rollout events.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub environment_id: Option<String>,
     /// Identifier for the originating tool call.
     pub call_id: String,
     /// Filesystem path resolved for the selected environment.

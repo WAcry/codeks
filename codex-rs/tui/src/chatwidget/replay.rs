@@ -421,7 +421,8 @@ impl ChatWidget {
                         .unwrap_or(codex_app_server_protocol::WebSearchAction::Other),
                 );
             }
-            ThreadItemPayload::ImageView { id, path } => {
+            // codeks 0021: this text-only view does not read the image filesystem.
+            ThreadItemPayload::ImageView { id, path, .. } => {
                 self.on_view_image_tool_call(id, path);
             }
             ThreadItemPayload::ImageGeneration(item) => {

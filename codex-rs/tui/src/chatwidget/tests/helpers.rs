@@ -831,6 +831,8 @@ pub(super) fn handle_view_image_tool_call(
             thread_id(chat),
             "turn-1".to_string(),
             AppServerThreadItemPayload::ImageView {
+                // codeks 0021: legacy fixtures have no recorded environment.
+                environment_id: None,
                 id: call_id.into(),
                 path: path.into(),
             },

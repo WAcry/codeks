@@ -396,6 +396,10 @@ pub struct WebSearchItem {
 #[derive(Debug, Clone, Deserialize, Serialize, TS, JsonSchema, PartialEq)]
 pub struct ImageViewItem {
     pub id: String,
+    // codeks 0021: retain the filesystem identity without guessing for older history.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub environment_id: Option<String>,
     /// Path resolved within the selected execution environment.
     ///
     /// This core protocol type is not exposed directly in the app-server API.
