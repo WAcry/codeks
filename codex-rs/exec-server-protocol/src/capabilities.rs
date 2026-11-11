@@ -48,6 +48,9 @@ pub struct DiscoverV2CapabilitiesResponse {
     pub plugins: Vec<ExecutorPlugin>,
     /// Skills outside installed packages.
     pub skills: Vec<ExecutorSkill>,
+    // codeks 0022: absence identifies executors without user skill configuration support.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disabled_skill_paths: Option<Vec<PathUri>>,
     #[serde(default)]
     pub warnings: Vec<String>,
 }

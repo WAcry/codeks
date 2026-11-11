@@ -3779,3 +3779,6 @@ async fn shared_catalog_keeps_captured_executor_and_separates_bindings_in_one_tu
 }
 #[path = "skills_extension/preparation_tests.rs"]
 mod preparation_tests;
+// codeks 0022: executor user configuration applies to the runtime catalog.
+#[path = "skills_extension/codeks_executor_catalog_tests.rs"]
+mod codeks_executor_catalog_tests;
