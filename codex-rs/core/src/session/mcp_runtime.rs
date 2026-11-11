@@ -162,8 +162,9 @@ impl Session {
                 }
 
                 let environment_id = &selected.selection.environment_id;
+                // codeks 0042: include normalized executor-owned stdio declarations.
                 let discovery = environment
-                    .discover_http_mcp_servers(selected.cwd().clone())
+                    .discover_mcp_servers(selected.cwd().clone())
                     .await;
                 let outcome = if discovery.is_ok() {
                     "success"
@@ -202,18 +203,16 @@ impl Session {
                     if name == CODEX_APPS_MCP_SERVER_NAME || !server.is_local_environment() {
                         continue;
                     }
-                    let McpServerTransportConfig::StreamableHttp {
+                    // codeks 0042: stdio is supported; HTTP host credential helpers remain excluded.
+                    if let McpServerTransportConfig::StreamableHttp {
                         env_http_headers,
                         http_headers_helper,
                         ..
                     } = &server.transport
-                    else {
-                        continue;
-                    };
-                    if http_headers_helper.is_some()
-                        || env_http_headers
-                            .as_ref()
-                            .is_some_and(|headers| !headers.is_empty())
+                        && (http_headers_helper.is_some()
+                            || env_http_headers
+                                .as_ref()
+                                .is_some_and(|headers| !headers.is_empty()))
                     {
                         tracing::warn!(
                             environment_id,
