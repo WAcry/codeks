@@ -5645,6 +5645,12 @@
         },
         {
           "properties": {
+            "environmentId": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "id": {
               "type": "string"
             },
