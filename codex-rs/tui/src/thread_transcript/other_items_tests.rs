@@ -150,6 +150,8 @@ fn tool_and_notice_projection_uses_normal_transcript_presentation() {
             results: None,
         }),
         ThreadItemPayload::ImageView {
+            // codeks 0021: legacy fixtures have no recorded environment.
+            environment_id: None,
             id: "view-1".to_string(),
             path: LegacyAppPathString::from_string("diagram.png".to_string()),
         },
