@@ -62,6 +62,8 @@ fn discovery_contract_round_trips_json() -> Result<(), Box<dyn std::error::Error
             skills: vec![skill],
         }],
         skills: vec![standalone],
+        // codeks 0022: existing fixtures retain the older executor wire shape.
+        disabled_skill_paths: None,
         warnings: Vec::new(),
     };
     let mut wire = serde_json::to_value(&response)?;
