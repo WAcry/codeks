@@ -60,6 +60,12 @@ pub fn collect_explicit_skill_mentions(
     let mut blocked_plain_names: HashSet<String> = HashSet::new();
 
     for input in inputs {
+        // codeks 0023: an explicit remote skill must not fall back to a same-name host skill.
+        if let UserInput::Mention { name, path } = input
+            && path.starts_with("skill://")
+        {
+            blocked_plain_names.insert(name.clone());
+        }
         if let UserInput::Skill { name, path, .. } = input {
             blocked_plain_names.insert(name.clone());
             let Ok(path) = AbsolutePathBuf::relative_to_current_dir(path) else {
@@ -202,3 +208,8 @@ fn select_skills_from_mentions(
 #[cfg(test)]
 #[path = "selection_tests.rs"]
 mod tests;
+
+// codeks 0023: structured remote selection remains authoritative when unavailable.
+#[cfg(test)]
+#[path = "codeks_skill_selection_tests.rs"]
+mod codeks_skill_selection_tests;
