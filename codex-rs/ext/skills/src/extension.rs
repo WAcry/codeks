@@ -445,8 +445,16 @@ where
                     .await
                 {
                     Ok(read_result) => {
-                        let (contents, truncated) =
-                            truncate_main_prompt_contents(read_result.contents.as_str());
+                        // codeks 0023: standalone executor skills keep the host user-skill body policy.
+                        let (contents, truncated) = if entry.authority.kind
+                            == SkillSourceKind::Executor
+                            && entry.plugin_id.is_none()
+                            && entry.remote_plugin_id.is_none()
+                        {
+                            (read_result.contents, false)
+                        } else {
+                            truncate_main_prompt_contents(read_result.contents.as_str())
+                        };
                         if truncated {
                             let warning = format!(
                                 "Skill `{}` exceeded the main prompt context limit and was truncated.",
@@ -474,6 +482,17 @@ where
                                     package: entry.id.0.clone(),
                                     main_resource: entry.main_prompt.as_str().to_string(),
                                 }),
+                            // codeks 0023: identify the executor for scripts referenced by this skill.
+                            execution_context: entry.main_prompt.environment_path().and_then(
+                                |(environment_id, path)| {
+                                    path.parent().map(|root| {
+                                        crate::fragments::SkillExecutionContext {
+                                            environment_id: environment_id.to_string(),
+                                            skill_root: root.inferred_native_path_string(),
+                                        }
+                                    })
+                                },
+                            ),
                         };
                         fragments.push(Box::new(fragment));
                         if entry.authority.kind == SkillSourceKind::Host {

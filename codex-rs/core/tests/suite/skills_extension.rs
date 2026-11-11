@@ -1892,8 +1892,13 @@ async fn explicit_executor_skill_prompt_rejects_oversized_resource() -> Result<(
     )
     .await;
     test.submit_turn("$live").await?;
+    // codeks 0023: preserve executor provenance when checking unchanged earlier instructions.
+    let execution_context = serde_json::to_string(&json!({
+        "environment_id": environment_id,
+        "skill_root": skill_path.parent().expect("skill root").inferred_native_path_string(),
+    }))?;
     let expected_prompts = vec![format!(
-        "<skill>\n<name>live</name>\n<path>skill://prompt-limit/live/SKILL.md</path>\n{FIRST_BODY}\n</skill>"
+        "<skill>\n<name>live</name>\n<path>skill://prompt-limit/live/SKILL.md</path>\n<execution_context>{execution_context}</execution_context>\n{FIRST_BODY}\n</skill>"
     )];
     let first_prompts = first_response
         .single_request()
