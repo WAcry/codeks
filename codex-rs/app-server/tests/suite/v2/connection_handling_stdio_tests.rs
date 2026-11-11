@@ -243,7 +243,9 @@ async fn stdio_shutdown_terminates_commands_and_children(shutdown: Shutdown) -> 
         let path = workspace.path().join("large-response");
         std::fs::write(&path, vec![b'x'; 1024 * 1024])?;
         app.send_fs_read_file_request(FsReadFileParams {
-            path: AbsolutePathBuf::try_from(path)?,
+            // codeks 0021: omitted environment retains the host filesystem.
+            environment_id: None,
+            path: AbsolutePathBuf::try_from(path)?.into(),
         })
         .await?;
         timeout(Duration::from_secs(10), async {

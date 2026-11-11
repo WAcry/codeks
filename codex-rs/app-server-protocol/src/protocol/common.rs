@@ -2727,7 +2727,9 @@ mod tests {
         let fs_read = ClientRequest::FsReadFile {
             request_id: request_id(),
             params: v2::FsReadFileParams {
-                path: absolute_path("/tmp/file.txt"),
+                // codeks 0021: omitted environment retains the host filesystem.
+                environment_id: None,
+                path: absolute_path("/tmp/file.txt").into(),
             },
         };
         assert_eq!(fs_read.serialization_scope(), None);

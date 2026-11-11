@@ -1542,7 +1542,8 @@ fn turn_summary(turn: &Turn, include_outputs: bool, output_chars: usize) -> Valu
                 "type": "webSearch", "id": item.id,
                 "query": truncate(&item.query, DEFAULT_OUTPUT_CHARS), "action": item.action
             }),
-            ThreadItemPayload::ImageView { id, path } => json!({
+            // codeks 0021: this text-only view does not read the image filesystem.
+            ThreadItemPayload::ImageView { id, path, .. } => json!({
                 "type": "imageView", "id": id, "path": path
             }),
             ThreadItemPayload::Sleep(item) => json!({

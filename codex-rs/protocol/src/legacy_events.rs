@@ -566,6 +566,8 @@ impl TurnItem {
             TurnItem::WebSearch(item) => vec![item.as_legacy_event()],
             TurnItem::ImageView(item) => {
                 vec![EventMsg::ViewImageToolCall(ViewImageToolCallEvent {
+                    // codeks 0021: keep image previews on their originating filesystem.
+                    environment_id: item.environment_id.clone(),
                     call_id: item.id.clone(),
                     path: item.path.clone(),
                 })]

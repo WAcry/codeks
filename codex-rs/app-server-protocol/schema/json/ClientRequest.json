@@ -1413,15 +1413,22 @@
       "type": "object"
     },
     "FsReadFileParams": {
-      "description": "Read a file from the host filesystem.",
+      "description": "Read a file from the host filesystem or a named execution environment.",
       "properties": {
+        "environmentId": {
+          "description": "Omit to read from the host filesystem.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "path": {
           "allOf": [
             {
-              "$ref": "#/definitions/AbsolutePathBuf"
+              "$ref": "#/definitions/LegacyAppPathString"
             }
           ],
-          "description": "Absolute path to read."
+          "description": "Absolute native path on the selected environment, which may use a foreign OS."
         }
       },
       "required": [

@@ -33,6 +33,10 @@ use codex_utils_path_uri::PathUri;
 use std::io;
 use std::sync::Arc;
 
+// codeks 0021: keep remote read routing separate from the host filesystem operations.
+#[path = "fs_environment_read.rs"]
+mod environment_read;
+
 #[derive(Clone)]
 pub(crate) struct FsRequestProcessor {
     environment_manager: Arc<EnvironmentManager>,
@@ -65,7 +69,20 @@ impl FsRequestProcessor {
         &self,
         params: FsReadFileParams,
     ) -> Result<FsReadFileResponse, JSONRPCErrorError> {
-        let path = PathUri::from_abs_path(&params.path);
+        // codeks 0021: explicit environments use their native paths; omitted IDs retain host validation.
+        if let Some(environment_id) = params.environment_id {
+            return environment_read::read_file(
+                &self.environment_manager,
+                &environment_id,
+                params.path,
+            )
+            .await;
+        }
+        let path = params
+            .path
+            .to_inferred_abs_path()
+            .ok_or_else(|| invalid_request("fs/readFile requires an absolute host file path"))?;
+        let path = PathUri::from_abs_path(&path);
         let bytes = self
             .file_system()?
             .read_file(&path, Default::default(), /*sandbox*/ None)

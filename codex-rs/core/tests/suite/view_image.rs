@@ -504,10 +504,19 @@ async fn view_image_tool_attaches_local_image() -> anyhow::Result<()> {
     )
     .await;
 
+    // codeks 0021: the fixture can use either a local or remote executor.
+    let expected_environment_id = Some(
+        test.executor_environment()
+            .selection()
+            .environment_id
+            .as_str(),
+    );
     match item_started.expect("view image item started event emitted") {
         codex_protocol::items::TurnItem::ImageView(item) => {
             assert_eq!(item.id, call_id);
             assert_eq!(item.path, path_uri);
+            // codeks 0021: both lifecycle notifications retain the resolved executor.
+            assert_eq!(item.environment_id.as_deref(), expected_environment_id);
         }
         other => panic!("expected ImageView item, got {other:?}"),
     }
@@ -515,12 +524,19 @@ async fn view_image_tool_attaches_local_image() -> anyhow::Result<()> {
         codex_protocol::items::TurnItem::ImageView(item) => {
             assert_eq!(item.id, call_id);
             assert_eq!(item.path, path_uri);
+            // codeks 0021: both lifecycle notifications retain the resolved executor.
+            assert_eq!(item.environment_id.as_deref(), expected_environment_id);
         }
         other => panic!("expected ImageView item, got {other:?}"),
     }
     let legacy_event = legacy_event.expect("legacy view image event emitted");
     assert_eq!(legacy_event.call_id, call_id);
     assert_eq!(legacy_event.path, path_uri);
+    // codeks 0021: persisted legacy history has the same filesystem identity.
+    assert_eq!(
+        legacy_event.environment_id.as_deref(),
+        expected_environment_id
+    );
 
     let req = mock.single_request();
     let body = req.body_json();

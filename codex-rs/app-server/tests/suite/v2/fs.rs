@@ -138,7 +138,9 @@ async fn fs_methods_return_error_when_local_environment_is_disabled() -> Result<
 
     let read_id = mcp
         .send_fs_read_file_request(codex_app_server_protocol::FsReadFileParams {
-            path: absolute_path(absolute_file),
+            // codeks 0021: omitted environment retains the host filesystem.
+            environment_id: None,
+            path: absolute_path(absolute_file).into(),
         })
         .await?;
     expect_error_message(&mut mcp, read_id, "local filesystem is not configured").await?;
@@ -225,7 +227,9 @@ async fn fs_methods_cover_current_fs_utils_surface() -> Result<()> {
 
     let read_request_id = mcp
         .send_fs_read_file_request(codex_app_server_protocol::FsReadFileParams {
-            path: absolute_path(nested_file.clone()),
+            // codeks 0021: omitted environment retains the host filesystem.
+            environment_id: None,
+            path: absolute_path(nested_file.clone()).into(),
         })
         .await?;
     let read_response: FsReadFileResponse = to_response(
@@ -348,7 +352,9 @@ async fn fs_write_file_accepts_base64_bytes() -> Result<()> {
 
     let read_request_id = mcp
         .send_fs_read_file_request(codex_app_server_protocol::FsReadFileParams {
-            path: absolute_path(file_path),
+            // codeks 0021: omitted environment retains the host filesystem.
+            environment_id: None,
+            path: absolute_path(file_path).into(),
         })
         .await?;
     let read_response: FsReadFileResponse = to_response(
