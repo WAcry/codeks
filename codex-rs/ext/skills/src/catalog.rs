@@ -156,7 +156,8 @@ impl SkillResourceId {
         })
     }
 
-    pub(crate) fn environment_path(&self) -> Option<(&str, &PathUri)> {
+    // codeks 0019: expose source identity to native catalog clients.
+    pub fn environment_path(&self) -> Option<(&str, &PathUri)> {
         self.environment_path
             .as_ref()
             .map(|resource| (resource.environment_id.as_str(), &resource.path))

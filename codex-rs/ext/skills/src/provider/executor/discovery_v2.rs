@@ -15,7 +15,8 @@ use super::ExecutorSkillProvider;
 use super::catalog_entry_from_skill;
 
 impl ExecutorSkillProvider {
-    pub(super) fn list_from_discovery_v2(
+    // codeks 0019: use the same native projection for runtime and directory inspection.
+    pub fn list_from_discovery_v2(
         &self,
         snapshots: &[ExecutorCapabilityDiscoveryV2Snapshot],
     ) -> SkillCatalog {
