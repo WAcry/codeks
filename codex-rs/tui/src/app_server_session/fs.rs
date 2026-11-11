@@ -82,7 +82,11 @@ impl AppServerFileSystem {
                 path,
                 |request_id, path| ClientRequest::FsReadFile {
                     request_id,
-                    params: FsReadFileParams { path },
+                    // codeks 0021: existing TUI reads remain host-scoped.
+                    params: FsReadFileParams {
+                        path: path.into(),
+                        environment_id: None,
+                    },
                 },
                 || json!({ "path": path.as_str() }),
             )
