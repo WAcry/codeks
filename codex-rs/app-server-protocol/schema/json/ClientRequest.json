@@ -4309,6 +4309,25 @@
       ],
       "type": "object"
     },
+    "SkillsCatalogParams": {
+      "properties": {
+        "environments": {
+          "description": "The caller's saved or proposed selection. This request does not load a thread.",
+          "items": {
+            "$ref": "#/definitions/TurnEnvironmentParams"
+          },
+          "type": "array"
+        },
+        "forceReload": {
+          "description": "Refresh host caches. Executors use their native watched capability inventory.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "environments"
+      ],
+      "type": "object"
+    },
     "SkillsConfigWriteParams": {
       "properties": {
         "enabled": {
@@ -7150,6 +7169,30 @@
         "params"
       ],
       "title": "Skills/listRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "skills/catalog"
+          ],
+          "title": "Skills/catalogRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/SkillsCatalogParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Skills/catalogRequest",
       "type": "object"
     },
     {

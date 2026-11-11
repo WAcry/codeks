@@ -26,6 +26,8 @@ pub use executor::ExecutorSkillProvider;
 pub(crate) use executor::attribute_executor_plugins;
 pub use frozen_cloud::FrozenCloudSkillProvider;
 pub use host::HostSkillProvider;
+// codeks 0019: inspect the same host catalog that runtime prepares.
+pub use host::catalog_from_outcome as host_skill_catalog;
 
 pub(crate) const MAX_SKILL_RESOURCE_CONTENT_BYTES: usize = 1024 * 1024;
 

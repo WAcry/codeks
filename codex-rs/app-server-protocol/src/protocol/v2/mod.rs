@@ -33,6 +33,8 @@ mod realtime;
 mod remote_control;
 mod review;
 mod rollout;
+// codeks 0019: environment-aware skill directory.
+mod skill_catalog;
 mod thread;
 mod thread_attachment;
 mod thread_data;
@@ -77,6 +79,8 @@ pub use remote_control::*;
 pub use review::*;
 pub use rollout::*;
 pub use shared::*;
+// codeks 0019: environment-aware skill directory.
+pub use skill_catalog::*;
 pub use thread::*;
 pub use thread_attachment::*;
 pub use thread_data::*;

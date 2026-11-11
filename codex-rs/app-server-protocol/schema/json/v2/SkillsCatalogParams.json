@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "LegacyAppPathString": {
+      "type": "string"
+    },
+    "TurnEnvironmentParams": {
+      "properties": {
+        "cwd": {
+          "$ref": "#/definitions/LegacyAppPathString"
+        },
+        "environmentId": {
+          "type": "string"
+        },
+        "runtimeWorkspaceRoots": {
+          "description": "Environment-native runtime workspace roots. Omitted defaults to `cwd`.",
+          "items": {
+            "$ref": "#/definitions/LegacyAppPathString"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "cwd",
+        "environmentId"
+      ],
+      "type": "object"
+    }
+  },
+  "properties": {
+    "environments": {
+      "description": "The caller's saved or proposed selection. This request does not load a thread.",
+      "items": {
+        "$ref": "#/definitions/TurnEnvironmentParams"
+      },
+      "type": "array"
+    },
+    "forceReload": {
+      "description": "Refresh host caches. Executors use their native watched capability inventory.",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "environments"
+  ],
+  "title": "SkillsCatalogParams",
+  "type": "object"
+}

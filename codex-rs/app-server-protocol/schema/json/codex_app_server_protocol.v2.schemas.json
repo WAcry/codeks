@@ -2741,6 +2741,30 @@
             },
             "method": {
               "enum": [
+                "skills/catalog"
+              ],
+              "title": "Skills/catalogRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/SkillsCatalogParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Skills/catalogRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "method": {
+              "enum": [
                 "skills/extraRoots/set"
               ],
               "title": "Skills/extraRoots/setRequestMethod",
@@ -18789,6 +18813,56 @@
       ],
       "type": "object"
     },
+    "SkillCatalogMetadata": {
+      "properties": {
+        "allowImplicitInvocation": {
+          "description": "False hides the skill from the automatic model catalog, not from explicit selection.",
+          "type": "boolean"
+        },
+        "description": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/LegacyAppPathString"
+            }
+          ],
+          "description": "Environment-native SKILL.md path, including for executor-backed entries."
+        },
+        "pluginId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "selector": {
+          "description": "Pass executor skill:// selectors unchanged in UserInput::Mention.path. Host paths retain the existing UserInput::Skill.path input contract.",
+          "type": "string"
+        },
+        "shortDescription": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "allowImplicitInvocation",
+        "description",
+        "enabled",
+        "name",
+        "path",
+        "selector"
+      ],
+      "type": "object"
+    },
     "SkillDependencies": {
       "properties": {
         "tools": {
@@ -19044,6 +19118,78 @@
         "type",
         "value"
       ],
+      "type": "object"
+    },
+    "SkillsCatalogEntry": {
+      "properties": {
+        "cwd": {
+          "$ref": "#/definitions/LegacyAppPathString"
+        },
+        "environmentId": {
+          "type": "string"
+        },
+        "errors": {
+          "description": "Discovery errors belong to this environment; other entries remain available.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "skills": {
+          "items": {
+            "$ref": "#/definitions/SkillCatalogMetadata"
+          },
+          "type": "array"
+        },
+        "supportsSkillConfig": {
+          "description": "Whether this environment applies user-level skills.config enablement rules.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "cwd",
+        "environmentId",
+        "errors",
+        "skills",
+        "supportsSkillConfig"
+      ],
+      "type": "object"
+    },
+    "SkillsCatalogParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "environments": {
+          "description": "The caller's saved or proposed selection. This request does not load a thread.",
+          "items": {
+            "$ref": "#/definitions/TurnEnvironmentParams"
+          },
+          "type": "array"
+        },
+        "forceReload": {
+          "description": "Refresh host caches. Executors use their native watched capability inventory.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "environments"
+      ],
+      "title": "SkillsCatalogParams",
+      "type": "object"
+    },
+    "SkillsCatalogResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "data": {
+          "items": {
+            "$ref": "#/definitions/SkillsCatalogEntry"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "data"
+      ],
+      "title": "SkillsCatalogResponse",
       "type": "object"
     },
     "SkillsChangedNotification": {

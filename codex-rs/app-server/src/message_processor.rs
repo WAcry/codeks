@@ -1606,6 +1606,10 @@ impl MessageProcessor {
             ClientRequest::SkillsList { params, .. } => {
                 self.catalog_processor.skills_list(params).await
             }
+            // codeks 0019: inspect executor skills through the native provider.
+            ClientRequest::SkillsCatalog { params, .. } => {
+                self.catalog_processor.skills_catalog(params).await
+            }
             ClientRequest::SkillsExtraRootsSet { params, .. } => {
                 self.catalog_processor.skills_extra_roots_set(params).await
             }
