@@ -25,6 +25,8 @@ mod client_metadata;
 mod code_mode_host;
 // codeks 0019: inspect skill catalogs without creating threads.
 mod codeks_executor_skill_catalog;
+// codeks 0021: exercise named-environment reads through app-server.
+mod codeks_environment_image_preview;
 mod collaboration_mode_list;
 #[cfg(unix)]
 mod command_exec;
