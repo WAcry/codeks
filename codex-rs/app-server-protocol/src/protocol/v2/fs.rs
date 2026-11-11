@@ -4,13 +4,18 @@ use codex_utils_absolute_path::AbsolutePathBuf;
 use serde::Deserialize;
 use serde::Serialize;
 
-/// Read a file from the host filesystem.
+// codeks 0021: reuse the existing read endpoint for an explicitly selected environment.
+/// Read a file from the host filesystem or a named execution environment.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]
 pub struct FsReadFileParams {
-    /// Absolute path to read.
-    pub path: AbsolutePathBuf,
+    /// Absolute native path on the selected environment, which may use a foreign OS.
+    pub path: codex_utils_path_uri::LegacyAppPathString,
+    /// Omit to read from the host filesystem.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional = nullable)]
+    pub environment_id: Option<String>,
 }
 
 /// Base64-encoded file contents returned by `fs/readFile`.

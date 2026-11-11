@@ -194,6 +194,8 @@ impl ViewImageHandler {
 
         let item = TurnItem::ImageView(ImageViewItem {
             id: call_id,
+            // codeks 0021: export the resolved environment, including the default host.
+            environment_id: Some(turn_environment.selection.environment_id.clone()),
             path: path_uri,
         });
         session.emit_turn_item_started(turn.as_ref(), &item).await;
