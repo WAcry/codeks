@@ -13,6 +13,9 @@
 mod managed_client;
 #[path = "rmcp_client/status.rs"]
 mod status;
+// codeks 0020: retain executor credential ownership for normalized stdio declarations.
+#[path = "rmcp_client/executor_config.rs"]
+mod executor_config;
 
 #[cfg(test)]
 #[path = "rmcp_client/provenance_tests.rs"]
@@ -1433,23 +1436,8 @@ pub(crate) async fn make_rmcp_client(
     protocol_mode: McpProtocolMode,
 ) -> Result<RmcpClient, StartupOutcomeError> {
     let config = server.config().clone();
-    if server.credential_policy() == McpCredentialPolicy::ExecutorOnly {
-        // Executor HTTP declarations cannot acquire host header helpers through
-        // cached registration materialization.
-        let valid_transport = matches!(
-            &config.transport,
-            McpServerTransportConfig::StreamableHttp {
-                env_http_headers,
-                http_headers_helper: None,
-                ..
-            } if env_http_headers.as_ref().is_none_or(HashMap::is_empty)
-        );
-        if config.is_local_environment() || !valid_transport {
-            return Err(StartupOutcomeError::from(anyhow!(
-                "executor-discovered MCP server '{server_name}' requires a remote HTTP transport without host environment headers or helpers"
-            )));
-        }
-    }
+    // codeks 0020: cached stdio declarations must not gain host environment access.
+    executor_config::validate(server_name, &config, server.credential_policy())?;
     if matches!(config.auth, McpServerAuth::EmaAuth) {
         let auth = ema_auth.ok_or_else(|| {
             StartupOutcomeError::from(anyhow!(
