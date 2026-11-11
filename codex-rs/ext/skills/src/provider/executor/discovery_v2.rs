@@ -15,7 +15,8 @@ use super::ExecutorSkillProvider;
 use super::catalog_entry_from_skill;
 
 impl ExecutorSkillProvider {
-    pub(super) fn list_from_discovery_v2(
+    // codeks 0041: use the same native projection for runtime and directory inspection.
+    pub fn list_from_discovery_v2(
         &self,
         snapshots: &[ExecutorCapabilityDiscoveryV2Snapshot],
     ) -> SkillCatalog {
@@ -61,12 +62,20 @@ impl ExecutorSkillProvider {
                     fallback_root = parent;
                     ("skills", &fallback_root)
                 };
-                if let Some(entry) = self.catalog_entry_from_discovered_skill(
+                if let Some(mut entry) = self.catalog_entry_from_discovered_skill(
                     skill,
                     root_id,
                     root_path,
                     &snapshot.environment_id,
                 ) {
+                    // codeks 0041: executor-owned user rules apply to every native consumer.
+                    if discovered
+                        .disabled_skill_paths
+                        .as_ref()
+                        .is_some_and(|paths| paths.contains(&skill.path))
+                    {
+                        entry.enabled = false;
+                    }
                     catalog.push_entry(entry);
                 }
             }

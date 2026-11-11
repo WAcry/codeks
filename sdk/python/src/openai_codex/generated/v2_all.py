@@ -5250,6 +5250,36 @@ class Settings(BaseModel):
     reasoning_effort: ReasoningEffort | None = None
 
 
+class SkillCatalogMetadata(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    allow_implicit_invocation: Annotated[
+        bool,
+        Field(
+            alias="allowImplicitInvocation",
+            description="False hides the skill from the automatic model catalog, not from explicit selection.",
+        ),
+    ]
+    description: str
+    enabled: bool
+    name: str
+    path: Annotated[
+        LegacyAppPathString,
+        Field(
+            description="Environment-native SKILL.md path, including for executor-backed entries."
+        ),
+    ]
+    plugin_id: Annotated[str | None, Field(alias="pluginId")] = None
+    selector: Annotated[
+        str,
+        Field(
+            description="Pass executor skill:// selectors unchanged in UserInput::Mention.path. Host paths retain the existing UserInput::Skill.path input contract."
+        ),
+    ]
+    short_description: Annotated[str | None, Field(alias="shortDescription")] = None
+
+
 class SkillErrorInfo(BaseModel):
     model_config = ConfigDict(
         populate_by_name=True,
@@ -5314,6 +5344,35 @@ class SkillToolDependency(BaseModel):
     type: str
     url: str | None = None
     value: str
+
+
+class SkillsCatalogEntry(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    cwd: LegacyAppPathString
+    environment_id: Annotated[str, Field(alias="environmentId")]
+    errors: Annotated[
+        list[str],
+        Field(
+            description="Discovery errors belong to this environment; other entries remain available."
+        ),
+    ]
+    skills: list[SkillCatalogMetadata]
+    supports_skill_config: Annotated[
+        bool,
+        Field(
+            alias="supportsSkillConfig",
+            description="Whether this environment applies user-level skills.config enablement rules.",
+        ),
+    ]
+
+
+class SkillsCatalogResponse(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    data: list[SkillsCatalogEntry]
 
 
 class SkillsChangedNotification(BaseModel):
@@ -10879,6 +10938,25 @@ class SkillMetadata(BaseModel):
     ] = None
 
 
+class SkillsCatalogParams(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    environments: Annotated[
+        list[TurnEnvironmentParams],
+        Field(
+            description="The caller's saved or proposed selection. This request does not load a thread."
+        ),
+    ]
+    force_reload: Annotated[
+        bool | None,
+        Field(
+            alias="forceReload",
+            description="Refresh host caches. Executors use their native watched capability inventory.",
+        ),
+    ] = None
+
+
 class SkillsListEntry(BaseModel):
     model_config = ConfigDict(
         populate_by_name=True,
@@ -11960,6 +12038,15 @@ class ThreadTurnsListRequest(BaseModel):
     id: RequestId
     method: Annotated[Literal["thread/turns/list"], Field(title="Thread/turns/listRequestMethod")]
     params: ThreadTurnsListParams
+
+
+class SkillsCatalogRequest(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    id: RequestId
+    method: Annotated[Literal["skills/catalog"], Field(title="Skills/catalogRequestMethod")]
+    params: SkillsCatalogParams
 
 
 class PluginShareUpdateTargetsRequest(BaseModel):
@@ -14102,6 +14189,7 @@ class ClientRequest(
         | ThreadItemsListRequest
         | ThreadInjectItemsRequest
         | SkillsListRequest
+        | SkillsCatalogRequest
         | SkillsExtraRootsSetRequest
         | HooksListRequest
         | MarketplaceAddRequest
@@ -14215,6 +14303,7 @@ class ClientRequest(
         | ThreadItemsListRequest
         | ThreadInjectItemsRequest
         | SkillsListRequest
+        | SkillsCatalogRequest
         | SkillsExtraRootsSetRequest
         | HooksListRequest
         | MarketplaceAddRequest
