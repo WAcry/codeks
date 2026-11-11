@@ -97,6 +97,8 @@ impl HostSkillsSnapshot {
                         path: skill.path_to_skills_md.inferred_native_path_string(),
                         contents,
                         resource_access: None,
+                        // codeks 0023: host skills keep their existing instruction shape.
+                        execution_context: None,
                     }));
                     prompts.injected.push(skill.clone());
                 }
