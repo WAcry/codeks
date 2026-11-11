@@ -1709,13 +1709,6 @@ class FsReadDirectoryResponse(BaseModel):
     ]
 
 
-class FsReadFileParams(BaseModel):
-    model_config = ConfigDict(
-        populate_by_name=True,
-    )
-    path: Annotated[AbsolutePathBuf, Field(description="Absolute path to read.")]
-
-
 class FsReadFileResponse(BaseModel):
     model_config = ConfigDict(
         populate_by_name=True,
@@ -6024,6 +6017,7 @@ class ImageViewThreadItem(BaseModel):
             description="Unix timestamp in milliseconds when the item completed, if recorded.",
         ),
     ] = None
+    environment_id: Annotated[str | None, Field(alias="environmentId")] = None
     id: str
     path: LegacyAppPathString
     started_at_ms: Annotated[
@@ -8185,15 +8179,6 @@ class AppInstalledRequest(BaseModel):
     params: AppsInstalledParams
 
 
-class FsReadFileRequest(BaseModel):
-    model_config = ConfigDict(
-        populate_by_name=True,
-    )
-    id: RequestId
-    method: Annotated[Literal["fs/readFile"], Field(title="Fs/readFileRequestMethod")]
-    params: FsReadFileParams
-
-
 class FsWriteFileRequest(BaseModel):
     model_config = ConfigDict(
         populate_by_name=True,
@@ -9192,6 +9177,22 @@ class FileUpdateChange(BaseModel):
     diff: str
     kind: PatchChangeKind
     path: str
+
+
+class FsReadFileParams(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    environment_id: Annotated[
+        str | None,
+        Field(alias="environmentId", description="Omit to read from the host filesystem."),
+    ] = None
+    path: Annotated[
+        LegacyAppPathString,
+        Field(
+            description="Absolute native path on the selected environment, which may use a foreign OS."
+        ),
+    ]
 
 
 class InputImageFunctionCallOutputContentItem(BaseModel):
@@ -12059,6 +12060,15 @@ class PluginShareUpdateTargetsRequest(BaseModel):
         Field(title="Plugin/share/updateTargetsRequestMethod"),
     ]
     params: PluginShareUpdateTargetsParams
+
+
+class FsReadFileRequest(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    id: RequestId
+    method: Annotated[Literal["fs/readFile"], Field(title="Fs/readFileRequestMethod")]
+    params: FsReadFileParams
 
 
 class TurnSteerRequest(BaseModel):

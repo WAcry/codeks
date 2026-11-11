@@ -1313,7 +1313,9 @@ fn fs_read_file_response_round_trips_base64_data() {
 #[test]
 fn fs_read_file_params_round_trip() {
     let params = FsReadFileParams {
-        path: absolute_path("tmp/example.txt"),
+        // codeks 0043: omitted environment retains the host filesystem.
+        environment_id: None,
+        path: absolute_path("tmp/example.txt").into(),
     };
 
     let value = serde_json::to_value(&params).expect("serialize fs/readFile params");
@@ -3717,6 +3719,8 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
     );
 
     let image_view_item = TurnItem::ImageView(ImageViewItem {
+        // codeks 0043: legacy fixtures have no recorded environment.
+        environment_id: None,
         id: "view-image-1".to_string(),
         path: PathUri::from_abs_path(&test_path_buf("/tmp/view-image.png").abs()),
     });
@@ -3724,6 +3728,8 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
     assert_eq!(
         ThreadItemPayload::from(image_view_item),
         ThreadItemPayload::ImageView {
+            // codeks 0043: legacy fixtures have no recorded environment.
+            environment_id: None,
             id: "view-image-1".to_string(),
             path: LegacyAppPathString::from_abs_path(&test_path_buf("/tmp/view-image.png").abs()),
         }

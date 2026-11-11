@@ -54,7 +54,8 @@ pub(super) fn cells(item: ThreadItemPayload, cwd: &Path) -> TranscriptCells {
                 item.action.unwrap_or(WebSearchAction::Other),
             )))
         }
-        ThreadItemPayload::ImageView { id, path } => {
+        // codeks 0043: this text-only view does not read the image filesystem.
+        ThreadItemPayload::ImageView { id, path, .. } => {
             cells.push(Arc::new(history_cell::new_view_image_tool_call(id, path)))
         }
         ThreadItemPayload::ImageGeneration(item)
