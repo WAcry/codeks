@@ -75,6 +75,15 @@ pub(crate) struct SkillInstructions {
     pub(crate) path: String,
     pub(crate) contents: String,
     pub(crate) resource_access: Option<SkillResourceAccess>,
+    // codeks 0023: retain the executor location in the native skill instruction fragment.
+    pub(crate) execution_context: Option<SkillExecutionContext>,
+}
+
+// codeks 0023: supporting scripts belong to the filesystem that supplied the skill.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct SkillExecutionContext {
+    pub(crate) environment_id: String,
+    pub(crate) skill_root: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -121,8 +130,20 @@ impl ContextualUserFragment for SkillInstructions {
                 format!("\n<resource_access>{metadata}</resource_access>")
             })
             .unwrap_or_default();
+        // codeks 0023: keep execution context separate from skill resource access policy.
+        let execution_context = self
+            .execution_context
+            .as_ref()
+            .map(|context| {
+                let metadata = serde_json::json!({
+                    "environment_id": context.environment_id,
+                    "skill_root": context.skill_root,
+                });
+                format!("\n<execution_context>{metadata}</execution_context>")
+            })
+            .unwrap_or_default();
         input_text(format!(
-            "\n<name>{name}</name>\n<path>{path}</path>{resource_access}\n{contents}\n"
+            "\n<name>{name}</name>\n<path>{path}</path>{resource_access}{execution_context}\n{contents}\n"
         ))
     }
 }
