@@ -95,8 +95,9 @@ fn include_startup_preference(
 }
 
 impl Environment {
-    /// Reads executor-owned HTTP MCP servers from the selected project's current config.
-    pub async fn discover_http_mcp_servers(
+    // codeks 0020: discover ordinary stdio declarations alongside HTTP servers.
+    /// Reads executor-owned MCP servers from the selected project's current config.
+    pub async fn discover_mcp_servers(
         &self,
         cwd: PathUri,
     ) -> Result<Vec<(String, McpServerConfig)>, ExecServerError> {
@@ -107,7 +108,8 @@ impl Environment {
                     return Ok((None, false));
                 }
                 self.read_environment_config(EnvironmentConfigReadParams {
-                    cwd,
+                    // codeks 0020: retain the executor cwd for stdio normalization.
+                    cwd: cwd.clone(),
                     config_paths: vec![vec!["mcp_servers".to_string()]],
                     requirements_paths: vec![vec!["mcp_servers".to_string()]],
                 })
@@ -144,8 +146,10 @@ impl Environment {
             .unwrap_or_else(|| toml::Value::Table(toml::map::Map::new()));
         if let Some(servers) = servers.as_table_mut() {
             servers.retain(|_, server| {
-                server.get("url").is_some()
-                    && (http_header_env_vars || server.get("bearer_token_env_var").is_none())
+                // codeks 0020: stdio uses the existing executor process transport.
+                server.get("command").is_some()
+                    || (server.get("url").is_some()
+                        && (http_header_env_vars || server.get("bearer_token_env_var").is_none()))
             });
         }
         let servers = servers
@@ -154,9 +158,20 @@ impl Environment {
                 ExecServerError::Protocol(format!("invalid executor-local MCP servers: {error}"))
             })?;
 
-        Ok(servers
+        // codeks 0020: never resolve a process cwd or environment variable on the host.
+        servers
             .into_iter()
             .map(|(name, mut server)| {
+                crate::executor_mcp_config::normalize_stdio(
+                    &mut server,
+                    &cwd,
+                    response.user_home_dir.as_ref(),
+                )
+                .map_err(|error| {
+                    ExecServerError::Protocol(format!(
+                        "invalid executor-local MCP server `{name}`: {error}"
+                    ))
+                })?;
                 if let Some(requirements) = requirements.as_ref()
                     && !requirements
                         .value
@@ -168,9 +183,9 @@ impl Environment {
                         source: requirements.source.clone(),
                     });
                 }
-                (name, server)
+                Ok((name, server))
             })
-            .collect())
+            .collect()
     }
 }
 
