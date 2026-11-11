@@ -347,8 +347,13 @@ impl ExecServerHandler {
         params: DiscoverV2CapabilitiesRequest,
     ) -> Result<Arc<DiscoverV2CapabilitiesResponse>, JSONRPCErrorError> {
         self.require_initialized_for("capability discovery")?;
-        self.capability_manager
+        // codeks 0022: refresh user skill settings without invalidating the inventory cache.
+        let inventory = self
+            .capability_manager
             .get_or_refresh_discovery(params)
+            .await
+            .map_err(|error| internal_error(error.to_string()))?;
+        crate::executor_skill_config::apply_user_skill_config(inventory)
             .await
             .map_err(|error| internal_error(error.to_string()))
     }
