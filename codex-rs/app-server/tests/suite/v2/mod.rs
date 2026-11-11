@@ -23,6 +23,8 @@ mod bedrock_service_tier;
 mod bedrock_setup;
 mod client_metadata;
 mod code_mode_host;
+// codeks 0019: inspect skill catalogs without creating threads.
+mod codeks_executor_skill_catalog;
 mod collaboration_mode_list;
 #[cfg(unix)]
 mod command_exec;
