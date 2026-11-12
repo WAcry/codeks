@@ -1021,7 +1021,8 @@ impl Environment {
     )]
     pub async fn force_info(&self) -> Result<EnvironmentInfo, ExecServerError> {
         match &self.remote_client {
-            Some(client) => client.get().await?.force_environment_info().await,
+            // codeks 0026: recover lost sessions only for this read-only probe.
+            Some(client) => client.force_environment_info().await,
             None => Ok(EnvironmentInfo::local()),
         }
     }
