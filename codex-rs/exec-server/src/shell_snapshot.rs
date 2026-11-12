@@ -127,6 +127,16 @@ impl ShellSnapshotCache {
             || params.argv[1] != "-lc"
             || !prepared.command.ends_with(&params.argv)
         {
+            if std::env::var_os("CODEKS_SNAPSHOT_DEBUG").is_some() {
+                eprintln!(
+                    "CODEKS_SNAPSHOT_DEBUG skip len={} shell_match={} flag_match={} suffix={} sandbox={}",
+                    params.argv.len(),
+                    params.argv.first() == Some(&request.shell.path),
+                    params.argv.get(1).is_some_and(|v| v == "-lc"),
+                    prepared.command.ends_with(&params.argv),
+                    params.sandbox.is_some()
+                );
+            }
             return Ok(None);
         }
 
@@ -153,6 +163,14 @@ impl ShellSnapshotCache {
                     && entry.env_policy == params.env_policy
                     && entry.sandbox == params.sandbox
             });
+            if std::env::var_os("CODEKS_SNAPSHOT_DEBUG").is_some() {
+                eprintln!(
+                    "CODEKS_SNAPSHOT_DEBUG entry_count={} cache_hit={} sandbox={}",
+                    entries.len(),
+                    position.is_some(),
+                    params.sandbox.is_some()
+                );
+            }
             let cached = position.and_then(|position| {
                 let mut entry = entries.remove(position)?;
                 // Share each failed attempt during backoff. After the retry
@@ -210,6 +228,14 @@ impl ShellSnapshotCache {
                     snapshot.prewarmed = prewarmed;
                     snapshot
                 });
+            if std::env::var_os("CODEKS_SNAPSHOT_DEBUG").is_some() {
+                eprintln!(
+                    "CODEKS_SNAPSHOT_DEBUG capture_attempt={} capture_ok={} reason={:?}",
+                    attempt,
+                    result.is_ok(),
+                    result.as_ref().err().map(|(reason, _)| reason)
+                );
+            }
             telemetry.shell_snapshot_captured(
                 started_at.elapsed(),
                 result.as_ref().map(|_| ()).map_err(|(reason, _)| *reason),
@@ -254,6 +280,14 @@ impl ShellSnapshotCache {
             }
         };
         let wait = wait_started_at.elapsed();
+        if std::env::var_os("CODEKS_SNAPSHOT_DEBUG").is_some() {
+            eprintln!(
+                "CODEKS_SNAPSHOT_DEBUG outcome_ok={} protected={} availability={}",
+                snapshot.is_ok(),
+                protected,
+                availability
+            );
+        }
         if purpose == CapturePurpose::Prewarm {
             return Ok(None);
         }
@@ -358,6 +392,16 @@ impl ShellSnapshotCache {
             ShellType::Sh => ("-c", ""),
             ShellType::PowerShell | ShellType::Cmd => unreachable!(),
         };
+        // Temporary experiment: suppress login and rc reads even inside sandbox wrappers.
+        if matches!(shell_type, ShellType::Bash) {
+            prepared
+                .command
+                .insert(shell_start + 1, "--noprofile".to_string());
+            prepared
+                .command
+                .insert(shell_start + 2, "--norc".to_string());
+        }
+        let shell_start = prepared.command.len() - params.argv.len();
         prepared.command[shell_start + 1] = shell_flag.to_string();
         prepared.command[shell_start + 2] = if protected {
             format!(
@@ -457,7 +501,12 @@ done
         .env_remove(CODEX_TOOL_CALL_ID_ENV_VAR)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null());
+        // Review branch only: expose capture failures instead of swallowing stderr.
+        .stderr(if std::env::var_os("CODEKS_SNAPSHOT_DEBUG").is_some() {
+            Stdio::inherit()
+        } else {
+            Stdio::null()
+        });
     if let Some(arg0) = &prepared.arg0 {
         command.arg0(arg0);
     }
@@ -514,6 +563,9 @@ done
             )
         })?;
         if !status.success() {
+            if std::env::var_os("CODEKS_SNAPSHOT_DEBUG").is_some() {
+                eprintln!("CODEKS_SNAPSHOT_DEBUG capture_status={status}");
+            }
             return Err((
                 "nonzero_exit",
                 internal_error(format!("shell snapshot capture exited with {status}")),

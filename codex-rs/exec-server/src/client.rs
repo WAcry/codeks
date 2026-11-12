@@ -148,6 +148,9 @@ use codex_http_client::HttpClientFactory;
 
 #[path = "client/accepted.rs"]
 pub(crate) mod accepted;
+// codeks 0026: reconnect once for read-only environment metadata after session loss.
+#[path = "client_environment_info.rs"]
+mod environment_info;
 pub(crate) mod http_client;
 mod network_policy_audit;
 #[cfg(test)]
@@ -3682,6 +3685,8 @@ mod tests {
         server.await.expect("server task should finish");
     }
 
+    // codeks 0026: metadata recovery preserves request and process boundaries.
+    mod codeks_environment_info_tests;
     mod config_timeout_tests;
     mod network_policy_tests;
 }

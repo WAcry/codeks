@@ -173,8 +173,15 @@ async fn shell_snapshot_concurrent_replays_keep_independent_readers(
     } else {
         ""
     };
-    let command =
-        format!("{command}IFS= read -r line\n{replay_checks}profile_helper \"$line\"; exit 7");
+    // Temporary proof: sourceability must really be denied, not just the fixture changed.
+    let deny_fd_check = if deny_fd_path {
+        "if ( : </dev/fd/0 ) 2>/dev/null; then printf 'fd path was readable' >&2; exit 48; fi\n"
+    } else {
+        ""
+    };
+    let command = format!(
+        "{command}{deny_fd_check}IFS= read -r line\n{replay_checks}profile_helper \"$line\"; exit 7"
+    );
     let sandbox = if use_sandbox {
         let mut policy = FileSystemSandboxPolicy::read_only();
         policy.entries.push(FileSystemSandboxEntry::new(
@@ -183,7 +190,7 @@ async fn shell_snapshot_concurrent_replays_keep_independent_readers(
         ));
         if deny_fd_path {
             policy.entries.push(FileSystemSandboxEntry::new(
-                PathUri::from_host_native_path("/dev/fd")?.into(),
+                PathUri::from_host_native_path("/proc/self/fd")?.into(),
                 FileSystemAccessMode::Deny,
             ));
         } else {
