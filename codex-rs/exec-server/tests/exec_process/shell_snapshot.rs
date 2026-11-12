@@ -183,7 +183,7 @@ async fn shell_snapshot_concurrent_replays_keep_independent_readers(
         ));
         if deny_fd_path {
             policy.entries.push(FileSystemSandboxEntry::new(
-                PathUri::from_host_native_path("/dev/fd")?.into(),
+                PathUri::from_host_native_path("/proc/self/fd")?.into(),
                 FileSystemAccessMode::Deny,
             ));
         } else {
