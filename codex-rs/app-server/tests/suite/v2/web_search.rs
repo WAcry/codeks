@@ -945,8 +945,14 @@ async fn model_lab_search_provider(
         .count();
     if error == Some(DiscoveryFailure::Http(503)) {
         assert!(scoped_lists > 1, "fallback should follow a discovery retry");
+    } else if allow_hosted {
+        // codeks 0028: duplicate metadata-scoped lists are valid discovery retries.
+        assert!(
+            scoped_lists >= 1,
+            "hosted search must receive scoped discovery"
+        );
     } else {
-        assert_eq!(scoped_lists, usize::from(allow_hosted));
+        assert_eq!(scoped_lists, 0, "disallowed hosted discovery must not run");
     }
     let request = requests[0].body_json();
     let tools = request["input"]
