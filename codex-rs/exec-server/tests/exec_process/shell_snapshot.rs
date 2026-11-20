@@ -1,5 +1,6 @@
 use super::*;
 use pretty_assertions::assert_eq;
+use std::os::unix::fs::PermissionsExt;
 use test_case::test_case;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -116,6 +117,8 @@ async fn shell_snapshot_concurrent_replays_keep_independent_readers(
         eprintln!("skipping sandbox test: {warning}");
         return Ok(());
     }
+    // codeks 0045: keep the Linux descriptor test independent of fresh procfs mount support.
+    let helper_directory;
     let context = if sandbox_mode == SnapshotSandbox::WorkspaceWrite {
         let (exe, linux_sandbox) = current_test_binary_helper_paths()?;
         let environment = Environment::create(
@@ -129,6 +132,19 @@ async fn shell_snapshot_concurrent_replays_keep_independent_readers(
             backend: environment.get_exec_backend(),
             _server: None,
         }
+    } else if cfg!(target_os = "linux") && deny_fd_path {
+        helper_directory = TempDir::new()?;
+        let helper = linux_sandbox_without_proc(&helper_directory)?;
+        let server = common::exec_server::exec_server_with_env(
+            [(common::LINUX_SANDBOX_HELPER_ENV, helper.as_os_str())],
+            &[],
+        )
+        .await?;
+        let environment = Environment::create_for_tests(Some(server.websocket_url().to_string()))?;
+        ProcessContext {
+            backend: environment.get_exec_backend(),
+            _server: Some(server),
+        }
     } else {
         create_process_context(deny_fd_path).await?
     };
@@ -139,12 +155,13 @@ async fn shell_snapshot_concurrent_replays_keep_independent_readers(
     let payload_len = if deny_fd_path { 1 } else { 480 * 1024 };
     let payload = "x".repeat(payload_len);
     let source = if shell == "bash" {
-        "${BASH_SOURCE[0]}"
+        // codeks 0045: an eval-defined function may have no source under nounset.
+        "${BASH_SOURCE[0]-}"
     } else {
         "${(%):-%x}"
     };
     let source_check = if deny_fd_path {
-        String::new()
+        format!("case \"{source}\" in /dev/fd/*) return 42 ;; esac; ")
     } else {
         format!("case \"{source}\" in /dev/fd/*) ;; *) return 42 ;; esac; ")
     };
@@ -182,8 +199,14 @@ async fn shell_snapshot_concurrent_replays_keep_independent_readers(
             FileSystemAccessMode::Write,
         ));
         if deny_fd_path {
+            // codeks 0045: on Linux /dev/fd is a symlink into the procfs view.
+            let denied_path = if cfg!(target_os = "linux") {
+                "/proc"
+            } else {
+                "/dev/fd"
+            };
             policy.entries.push(FileSystemSandboxEntry::new(
-                PathUri::from_host_native_path("/dev/fd")?.into(),
+                PathUri::from_host_native_path(denied_path)?.into(),
                 FileSystemAccessMode::Deny,
             ));
         } else {
@@ -252,7 +275,7 @@ async fn shell_snapshot_concurrent_replays_keep_independent_readers(
                 collect_process_output_from_events(started.process).await?;
             assert!(
                 output.ends_with(&format!("restored:input-{index}")),
-                "{output:?}"
+                "stdout={output:?}, stderr={errors:?}, status={status:?}"
             );
             if shell == "zsh" {
                 assert!(
@@ -270,4 +293,20 @@ async fn shell_snapshot_concurrent_replays_keep_independent_readers(
     assert_eq!(std::fs::read_to_string(home.path().join("captures"))?, "x");
     assert_eq!(std::fs::read_to_string(protected_file.path())?, "protected");
     Ok(())
+}
+
+// codeks 0045: keep the real sandbox helper and all original arguments except the fresh procfs mount.
+fn linux_sandbox_without_proc(directory: &TempDir) -> Result<std::path::PathBuf> {
+    let (_, real_helper) = current_test_binary_helper_paths()?;
+    let real_helper = real_helper.context("Linux sandbox helper must be available")?;
+    let real = directory.path().join("real");
+    std::fs::create_dir(&real)?;
+    std::os::unix::fs::symlink(real_helper, real.join("codex-linux-sandbox"))?;
+    let wrapper = directory.path().join("codex-linux-sandbox");
+    std::fs::write(
+        &wrapper,
+        "#!/bin/sh\nexec \"${0%/*}/real/codex-linux-sandbox\" --no-proc \"$@\"\n",
+    )?;
+    std::fs::set_permissions(&wrapper, std::fs::Permissions::from_mode(0o700))?;
+    Ok(wrapper)
 }

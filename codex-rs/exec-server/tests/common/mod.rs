@@ -28,6 +28,8 @@ pub(crate) const DELAYED_OUTPUT_AFTER_EXIT_PARENT_ARG: &str =
 pub(crate) const SYSTEM_PROXY_REQUEST_URL_ENV: &str =
     "CODEX_EXEC_SERVER_TEST_SYSTEM_PROXY_REQUEST_URL";
 pub(crate) const SYSTEM_PROXY_URL_ENV: &str = "CODEX_EXEC_SERVER_TEST_SYSTEM_PROXY_URL";
+// codeks 0045: allow the descriptor-path fixture to select its Linux sandbox helper.
+pub(crate) const LINUX_SANDBOX_HELPER_ENV: &str = "CODEKS_TEST_LINUX_SANDBOX_HELPER";
 
 const CODEX_WINDOWS_SANDBOX_ARG1: &str = "--run-as-windows-sandbox";
 const DELAYED_OUTPUT_AFTER_EXIT_CHILD_ARG: &str = "--codex-test-delayed-output-after-exit-child";
@@ -300,8 +302,10 @@ fn linux_sandbox_exe(
 ) -> Option<PathBuf> {
     #[cfg(target_os = "linux")]
     {
-        guard
-            .and_then(|guard| guard.paths().codex_linux_sandbox_exe.clone())
+        // codeks 0045: this override is used only in the test executable.
+        env::var_os(LINUX_SANDBOX_HELPER_ENV)
+            .map(PathBuf::from)
+            .or_else(|| guard.and_then(|guard| guard.paths().codex_linux_sandbox_exe.clone()))
             .or_else(|| Some(current_exe.to_path_buf()))
     }
     #[cfg(not(target_os = "linux"))]

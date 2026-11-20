@@ -280,14 +280,18 @@ impl ShellSnapshotCache {
         if purpose == CapturePurpose::Prewarm {
             return Ok(None);
         }
-        let Some((flag, script, env)) = prepared.shell_snapshot_replay_mut(&params.argv) else {
-            return Ok(None);
-        };
-        let Ok(snapshot) = snapshot else {
-            if let Some(proxy) = proxy {
+        // codeks 0045: normal startup retains the original shell arguments on fallback.
+        let restore_fallback = |prepared: &mut WrappedSandboxCommand, availability| {
+            if let Some(proxy) = proxy
+                && let Some((_, script, env)) =
+                    prepared.shell_snapshot_replay_mut(&params.argv, &[])
+            {
                 credentials::restore_fallback(script, env, proxy);
             }
             telemetry.shell_snapshot_command(wait, availability, "fallback");
+        };
+        let Ok(snapshot) = snapshot else {
+            restore_fallback(prepared, availability);
             return Ok(None);
         };
         if availability == "capture_pending" && snapshot.prewarmed {
@@ -309,10 +313,7 @@ impl ShellSnapshotCache {
                         ?error,
                         "cannot prepare shell snapshot transport; using normal startup"
                     );
-                    telemetry.shell_snapshot_command(wait, availability, "fallback");
-                    if let Some(proxy) = proxy {
-                        credentials::restore_fallback(script, env, proxy);
-                    }
+                    restore_fallback(prepared, availability);
                     return Ok(None);
                 }
             }
@@ -320,6 +321,17 @@ impl ShellSnapshotCache {
             None
         };
 
+        // codeks 0045: remote Bash can read rc files even during noninteractive replay.
+        let startup_options: &[&str] = if shell_type == ShellType::Bash {
+            &["--noprofile", "--norc"]
+        } else {
+            &[]
+        };
+        let Some((flag, script, env)) =
+            prepared.shell_snapshot_replay_mut(&params.argv, startup_options)
+        else {
+            return Ok(None);
+        };
         let request_overrides = params
             .env
             .iter()
