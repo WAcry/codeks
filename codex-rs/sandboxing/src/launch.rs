@@ -148,12 +148,21 @@ impl WrappedSandboxCommand {
     }
 
     /// Borrow the matched shell's flag, script, and environment for snapshot replay.
+    // codeks 0045: insert startup options after the matched shell, inside the existing wrapper.
     pub fn shell_snapshot_replay_mut(
         &mut self,
         expected: &[String],
+        startup_options: &[&str],
     ) -> Option<(&mut String, &mut String, &mut HashMap<String, String>)> {
-        let index = self.shell_script_index(expected)?;
-        let [flag, script] = self.request.command[index - 1..].first_chunk_mut()?;
+        let flag_index = self.shell_script_index(expected)? - 1;
+        for (offset, option) in startup_options.iter().enumerate() {
+            self.request
+                .command
+                .insert(flag_index + offset, (*option).to_owned());
+        }
+        self.inner_arg_count += startup_options.len();
+        let [flag, script] =
+            self.request.command[flag_index + startup_options.len()..].first_chunk_mut()?;
         Some((flag, script, &mut self.request.env))
     }
 

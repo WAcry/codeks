@@ -141,8 +141,9 @@ async fn snapshot_failure_retries_are_bounded_and_single_flight(
             let mut request = prepared.into_command_request().expect("shell command");
             if let Some(reader) = reader {
                 let fd = std::os::fd::AsRawFd::as_raw_fd(&reader);
-                request.command[2] =
-                    request.command[2].replace(&format!("/dev/fd/{fd}"), "/dev/fd/SNAPSHOT");
+                // codeks 0045: the Bash startup flags precede the final script argument.
+                let script = request.command.last_mut().expect("snapshot replay script");
+                *script = script.replace(&format!("/dev/fd/{fd}"), "/dev/fd/SNAPSHOT");
             }
             (request.command, request.env)
         };
@@ -171,7 +172,10 @@ async fn snapshot_failure_retries_are_bounded_and_single_flight(
             *expected_commands.entry("fallback".to_string()).or_insert(0) += 1;
             assert_eq!((&command, &env), (&params.argv, &params.env));
         } else {
-            assert_ne!(command, params.argv);
+            assert_eq!(
+                &command[..command.len() - 1],
+                ["/bin/bash", "--noprofile", "--norc", "-pc"]
+            );
         }
         assert_eq!(replay(prepared, first), (command, env));
         assert_eq!(
