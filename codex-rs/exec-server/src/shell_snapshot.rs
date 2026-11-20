@@ -370,6 +370,16 @@ impl ShellSnapshotCache {
                 params.argv[2]
             )
         };
+        // codeks 0029: Bash replay must never re-run the original login/rc files.
+        // Insert flags before the already-rewritten -pc and keep sandbox prefixes intact.
+        if shell_type == ShellType::Bash {
+            prepared
+                .command
+                .insert(shell_start + 1, "--noprofile".to_string());
+            prepared
+                .command
+                .insert(shell_start + 2, "--norc".to_string());
+        }
 
         telemetry.shell_snapshot_command(wait, availability, "used");
         Ok(reader)
