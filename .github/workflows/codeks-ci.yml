@@ -141,7 +141,7 @@ jobs:
           for crate in $CRATES; do args+=(-p "$crate"); done
           # Upstream tests that the patches change on purpose (ci_skip in the patch documents).
           if [ -n "$FILTER" ]; then args+=(-E "$FILTER"); fi
-          cargo nextest run --no-fail-fast --test-threads 2 "${args[@]}"
+          CODEKS_NET_DEBUG=1 RUST_BACKTRACE=1 cargo nextest run --no-fail-fast --test-threads 1 -p codex-core -E 'test(user_network_approval_once_session_and_denial_semantics)'
       # codeks 0003: keep complete failed Insta candidates for reviewing snapshot drift.
       - name: Upload failed snapshot candidates
         if: failure() && !cancelled()

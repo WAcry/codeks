@@ -112,8 +112,8 @@ use test_case::test_case;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 
-const NETWORK_TEST_HOST: &str = "codex-network-test.invalid";
-const NETWORK_TEST_TARGET: &str = "http://codex-network-test.invalid:80";
+const NETWORK_TEST_HOST: &str = "127.0.0.2";
+const NETWORK_TEST_TARGET: &str = "http://127.0.0.2:80";
 
 #[test_case("experimental_network"; "legacy_requirements")]
 #[test_case("network_proxy"; "proxy_requirements")]
@@ -1198,7 +1198,7 @@ async fn user_network_approval_once_session_and_denial_semantics(
     assert_eq!(approval.cwd, environment.cwd.clone().into());
     assert_eq!(
         approval.reason.as_deref(),
-        Some("Network access to codex-network-test.invalid requires approval")
+        Some("Network access to 127.0.0.2 requires approval")
     );
     test.codex
         .submit(Op::ExecApproval {
@@ -1212,7 +1212,31 @@ async fn user_network_approval_once_session_and_denial_semantics(
     let mut granted_for_session = false;
     tokio::time::timeout(Duration::from_secs(30), async {
         while !pending.is_empty() {
-            match test.codex.next_event().await?.msg {
+            let msg = test.codex.next_event().await?.msg;
+            if std::env::var_os("CODEKS_NET_DEBUG").is_some() {
+                match &msg {
+                    EventMsg::ExecApprovalRequest(approval) => {
+                        eprintln!(
+                            "CODEKS_NET_DEBUG approval={} granted={} pending={pending:?}",
+                            approval.call_id, granted_for_session
+                        );
+                    }
+                    EventMsg::ExecCommandBegin(begin) => {
+                        eprintln!("CODEKS_NET_DEBUG command_begin={}", begin.call_id);
+                    }
+                    EventMsg::ExecCommandEnd(end) => {
+                        eprintln!(
+                            "CODEKS_NET_DEBUG command_end={} exit={}",
+                            end.call_id, end.exit_code
+                        );
+                    }
+                    EventMsg::Error(err) => eprintln!("CODEKS_NET_DEBUG error={err:?}"),
+                    EventMsg::Warning(warning) => eprintln!("CODEKS_NET_DEBUG warning={warning:?}"),
+                    EventMsg::TurnComplete(_) => eprintln!("CODEKS_NET_DEBUG turn_complete"),
+                    _ => {}
+                }
+            }
+            match msg {
                 EventMsg::ExecApprovalRequest(approval) => {
                     assert!(!granted_for_session, "duplicate prompt after session grant");
                     assert_eq!(approval.command, ["network-access", NETWORK_TEST_TARGET]);
