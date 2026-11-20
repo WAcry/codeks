@@ -3404,6 +3404,8 @@ async fn start_concurrent_network_requests(
 
     let ports: HashSet<_> = requests.iter().map(|(_, port)| port).collect();
     let mut prompts = HashMap::new();
+    // codeks 0046: approve only once each command has left its startup grace period.
+    let mut started = HashSet::new();
     wait_for_event(&test.codex, |event| {
         match event {
             EventMsg::ExecApprovalRequest(approval) => {
@@ -3415,13 +3417,16 @@ async fn start_concurrent_network_requests(
                     approval.command
                 );
             }
+            EventMsg::ExecCommandBegin(begin) => {
+                started.insert(begin.call_id.clone());
+            }
             EventMsg::TurnComplete(_) => panic!(
                 "turn completed before network approval: {:?}",
                 responses.function_call_output_text(requests[0].0)
             ),
             _ => {}
         }
-        prompts.len() == ports.len()
+        prompts.len() == ports.len() && requests.iter().all(|(id, _)| started.contains(*id))
     })
     .await;
     // Every matching execution has joined its endpoint queue before the first decision.
