@@ -297,8 +297,22 @@ async fn active_discovery_supersedes_restored_completion() -> color_eyre::Result
     Ok(())
 }
 
-#[tokio::test]
-async fn opens_agent_transcript_beside_parent_and_returns_to_chooser() -> color_eyre::Result<()> {
+#[test]
+fn opens_agent_transcript_beside_parent_and_returns_to_chooser() -> color_eyre::Result<()> {
+    // codeks 0047: real-server sidebar scenarios need a larger debug test stack.
+    std::thread::Builder::new()
+        .stack_size(16 * 1024 * 1024)
+        .spawn(|| {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()?
+                .block_on(Box::pin(agent_transcript_sidebar_scenario()))
+        })?
+        .join()
+        .expect("agent transcript sidebar test thread panicked")
+}
+
+async fn agent_transcript_sidebar_scenario() -> color_eyre::Result<()> {
     use crate::app::side_focus::SidebarTarget;
     use crate::app::test_support::enable_side_retention;
     use crate::app::test_support::side_frame;
